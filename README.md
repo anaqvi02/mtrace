@@ -67,3 +67,20 @@ codesign --force --sign - /Applications/StrictApp.app
 ```rust
 interpose!(my_unlink, libc::unlink),
 ```
+
+## What Can (and Cannot) Be Traced
+Apple's System Integrity Protection (SIP) creates a hard boundary around core OS components. Here is a quick cheat sheet on what you can and cannot trace:
+
+### ❌ Cannot Be Traced (Blocked by SIP)
+Core Apple-signed system utilities and applications compiled for `arm64e` with restricted entitlements will immediately crash if you try to trace them.
+- **System Utilities:** `/bin/ls`, `/bin/cat`, `/bin/bash`
+- **System Network Tools:** `/usr/bin/curl`, `/usr/bin/ssh`
+- **First-Party Apple Apps:** Safari, Finder, Activity Monitor
+
+*(Error signature: `terminating because inserted dylib ... incompatible architecture (have 'arm64', need 'arm64e')`)*
+
+### ✅ Can Be Traced (Standard `arm64`)
+Any third-party software, developer tool, or custom script that is standard `arm64` and lacks strict Library Validation will work perfectly.
+- **Homebrew Packages:** `/opt/homebrew/bin/python3`, `/opt/homebrew/bin/curl`, `wget`, `ffmpeg`, `nmap`
+- **Developer Runtimes:** Python (`python3 script.py`), Node.js (`node index.js`), compiled C/Rust binaries (`./victim`)
+- **Third-Party Applications:** Steam, Discord, VS Code, Spotify (often require stripping their signature first if downloaded from the Mac App Store).
