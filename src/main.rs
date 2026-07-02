@@ -2,8 +2,23 @@ use std::process::Command;
 use std::env;
 use std::io;
 
+fn print_help() {
+    println!("mtrace - High-speed macOS user-space system call tracer");
+    println!("");
+    println!("Usage: mtrace [OPTIONS] <command> [args...]");
+    println!("");
+    println!("Options:");
+    println!("  -o, --output <file>    Write output to a specific file instead of stderr");
+    println!("  -t, --trace <calls>    Comma-separated list of syscalls to intercept (e.g. open,read)");
+    println!("  -j, --json             Export logs in NDJSON format");
+    println!("  -e, --ecs              Export logs in Elastic Common Schema (ECS) JSON format");
+    println!("  -h, --help             Print this help message and exit");
+    println!("");
+    println!("Example:");
+    println!("  mtrace -t open,socket -j -o trace.json curl http://example.com");
+}
+
 fn main() -> io::Result<()> {
-    // Dynamically find the dylib in the same directory as this executable
     let mut dylib_path = env::current_exe()?;
     dylib_path.set_file_name("libmactrace_lib.dylib");
 
@@ -16,8 +31,14 @@ fn main() -> io::Result<()> {
     let mut args: Vec<String> = env::args().skip(1).collect();
     let mut output_file = None;
     let mut trace_filter = None;
+    let mut json_output = false;
+    let mut ecs_output = false;
 
-    // Very simple manual parsing for -o and -t
+    if args.is_empty() {
+        print_help();
+        std::process::exit(1);
+    }
+
     while !args.is_empty() {
         if args[0] == "-o" || args[0] == "--output" {
             args.remove(0);
@@ -33,9 +54,18 @@ fn main() -> io::Result<()> {
                 std::process::exit(1);
             }
             trace_filter = Some(args.remove(0));
+        } else if args[0] == "-j" || args[0] == "--json" {
+            args.remove(0);
+            json_output = true;
+        } else if args[0] == "-e" || args[0] == "--ecs" {
+            args.remove(0);
+            ecs_output = true;
+        } else if args[0] == "-h" || args[0] == "-help" || args[0] == "--help" {
+            print_help();
+            std::process::exit(0);
         } else if args[0].starts_with("-") {
             eprintln!("Unknown argument: {}", args[0]);
-            eprintln!("Usage: mactrace [-o output.log] [-t open,read] <command> [args...]");
+            eprintln!("Use -h or --help for usage information.");
             std::process::exit(1);
         } else {
             break;
@@ -43,7 +73,7 @@ fn main() -> io::Result<()> {
     }
 
     if args.is_empty() {
-        eprintln!("Usage: mactrace [-o output.log] [-t open,read] <command> [args...]");
+        eprintln!("Error: No command specified to trace.");
         std::process::exit(1);
     }
 
@@ -57,6 +87,12 @@ fn main() -> io::Result<()> {
     }
     if let Some(filter) = trace_filter {
         cmd.env("MTRACE_FILTER", filter);
+    }
+    if json_output {
+        cmd.env("MTRACE_JSON", "1");
+    }
+    if ecs_output {
+        cmd.env("MTRACE_ECS", "1");
     }
 
     let status = cmd.status()?;

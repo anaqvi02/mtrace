@@ -6,6 +6,8 @@ Unlike Apple's native `dtruss` which requires disabling System Integrity Protect
 
 If you are a reverse engineer, malware analyst, or just want to debug a crashing application, `mtrace` gives you unparalleled visibility and control over what a process is doing, without ever touching your system's security settings.
 
+*This technically isnt a "system call" tracer, and is instead traces libc/api calls.
+
 ## Features
 - **Zero Sudo:** Run it instantly as a standard user.
 - **Microsecond Timestamps:** Accurately measure network latency and disk I/O.
@@ -34,7 +36,7 @@ Run any standard `arm64` macOS application under the tracer:
 
 ```bash
 # Basic usage
-mtrace ls
+mtrace mtrace python3 -c "print('hello')"
 
 # Filter for specific syscalls (comma-separated)
 mtrace -t open,socket,execve ./my_binary
@@ -51,16 +53,7 @@ cd examples
 gcc victim.c -o victim
 cd ..
 mtrace -t open,socket ./examples/victim
-```
-
-## The "Gotcha": Hardened Runtime (Library Validation)
-Apple strictly restricts `arm64e` system binaries (like `/bin/cat` or Safari). However, almost all third-party software (Steam, Discord, VS Code, Homebrew packages) are standard `arm64` and can be traced.
-
-If you encounter a Mac App Store application that blocks injection because of Apple's **Library Validation** entitlement, you can easily strip its signature to trace it anyway:
-```bash
-codesign --remove-signature /Applications/StrictApp.app
-codesign --force --sign - /Applications/StrictApp.app
-```
+``
 
 ## Adding New Hooks
 `mtrace` makes it incredibly easy to add new hooks. Just open `src/lib.rs` and use the `interpose!` macro to intercept any function found in `libc`:
@@ -84,3 +77,4 @@ Any third-party software, developer tool, or custom script that is standard `arm
 - **Homebrew Packages:** `/opt/homebrew/bin/python3`, `/opt/homebrew/bin/curl`, `wget`, `ffmpeg`, `nmap`
 - **Developer Runtimes:** Python (`python3 script.py`), Node.js (`node index.js`), compiled C/Rust binaries (`./victim`)
 - **Third-Party Applications:** Steam, Discord, VS Code (many large Electron and game apps disable Library Validation out of the box).
+- **Basically anything that you might want to run this on works.**
