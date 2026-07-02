@@ -6,7 +6,7 @@ Unlike Apple's native `dtruss` which requires disabling System Integrity Protect
 
 If you are a reverse engineer, malware analyst, or just want to debug a crashing application, `mtrace` gives you unparalleled visibility and control over what a process is doing, without ever touching your system's security settings.
 
-*This technically isnt a "system call" tracer, and is instead traces libc/api calls.
+*This technically isnt a "system call" tracer, and instead traces libc/api calls.
 
 ## Features
 - **Zero Sudo:** Run it instantly as a standard user.

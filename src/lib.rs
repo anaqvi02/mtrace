@@ -3,7 +3,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::io::Write;
 
 static mut LOG_FD: c_int = 2;
-static mut FILTER_PTR: *const c_char = std::ptr::null();
+static mut FILTER_MASK: u32 = 0xFFFFFFFF;
 static mut JSON_OUTPUT: bool = false;
 static mut ECS_OUTPUT: bool = false;
 
@@ -23,7 +23,28 @@ static INITIALIZE: unsafe extern "C" fn() = {
         let env_filter = b"MTRACE_FILTER\0".as_ptr() as *const c_char;
         let filter_ptr = unsafe { libc::getenv(env_filter) };
         if !filter_ptr.is_null() {
-            unsafe { FILTER_PTR = filter_ptr; }
+            unsafe { FILTER_MASK = 0; }
+            if let Ok(filter_str) = core::str::from_utf8(unsafe { CStr::from_ptr(filter_ptr).to_bytes() }) {
+                for s in filter_str.split(',') {
+                    match s.trim() {
+                        "open" => unsafe { FILTER_MASK |= 1 << 0; },
+                        "close" => unsafe { FILTER_MASK |= 1 << 1; },
+                        "read" => unsafe { FILTER_MASK |= 1 << 2; },
+                        "write" => unsafe { FILTER_MASK |= 1 << 3; },
+                        "socket" => unsafe { FILTER_MASK |= 1 << 4; },
+                        "connect" => unsafe { FILTER_MASK |= 1 << 5; },
+                        "send" => unsafe { FILTER_MASK |= 1 << 6; },
+                        "recv" => unsafe { FILTER_MASK |= 1 << 7; },
+                        "stat" => unsafe { FILTER_MASK |= 1 << 8; },
+                        "execve" => unsafe { FILTER_MASK |= 1 << 9; },
+                        "fork" => unsafe { FILTER_MASK |= 1 << 10; },
+                        "exit" => unsafe { FILTER_MASK |= 1 << 11; },
+                        "mmap" => unsafe { FILTER_MASK |= 1 << 12; },
+                        "munmap" => unsafe { FILTER_MASK |= 1 << 13; },
+                        _ => {}
+                    }
+                }
+            }
         }
 
         let env_json = b"MTRACE_JSON\0".as_ptr() as *const c_char;
@@ -87,17 +108,9 @@ pub static INTERPOSE_ARRAY: [Interpose; 14] = [
     interpose!(my_munmap, libc::munmap),
 ];
 
-fn should_log(name: &str) -> bool {
-    unsafe {
-        if FILTER_PTR.is_null() {
-            return true;
-        }
-        if let Ok(filter_str) = core::str::from_utf8(CStr::from_ptr(FILTER_PTR).to_bytes()) {
-            filter_str.split(',').any(|s| s.trim() == name)
-        } else {
-            true
-        }
-    }
+#[inline(always)]
+fn should_log(bit: u32) -> bool {
+    unsafe { (FILTER_MASK & (1 << bit)) != 0 }
 }
 
 fn get_timestamp_str(buf: &mut [u8]) -> usize {
@@ -156,8 +169,9 @@ fn log_event(syscall: &str, args_content: core::fmt::Arguments, plain_msg: core:
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_open(path: *const c_char, oflag: c_int, mode: c_int) -> c_int {
-    if !should_log("open") { return unsafe { libc::open(path, oflag, mode) } }
-    let path_str = unsafe { CStr::from_ptr(path).to_string_lossy() };
+    if !should_log(0) { return unsafe { libc::open(path, oflag, mode) } }
+    let path_bytes = unsafe { CStr::from_ptr(path).to_bytes() };
+    let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
     log_event(
         "open",
         format_args!("\"path\":\"{}\",\"oflag\":{},\"mode\":{}", path_str, oflag, mode),
@@ -168,7 +182,7 @@ pub unsafe extern "C" fn my_open(path: *const c_char, oflag: c_int, mode: c_int)
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_close(fd: c_int) -> c_int {
-    if !should_log("close") { return unsafe { libc::close(fd) } }
+    if !should_log(1) { return unsafe { libc::close(fd) } }
     log_event(
         "close",
         format_args!("\"fd\":{}", fd),
@@ -179,7 +193,7 @@ pub unsafe extern "C" fn my_close(fd: c_int) -> c_int {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_read(fd: c_int, buf: *mut c_void, count: usize) -> isize {
-    if !should_log("read") { return unsafe { libc::read(fd, buf, count) } }
+    if !should_log(2) { return unsafe { libc::read(fd, buf, count) } }
     let ret = unsafe { libc::read(fd, buf, count) };
     log_event(
         "read",
@@ -191,7 +205,7 @@ pub unsafe extern "C" fn my_read(fd: c_int, buf: *mut c_void, count: usize) -> i
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_write(fd: c_int, buf: *const c_void, count: usize) -> isize {
-    if !should_log("write") { return unsafe { libc::write(fd, buf, count) } }
+    if !should_log(3) { return unsafe { libc::write(fd, buf, count) } }
     log_event(
         "write",
         format_args!("\"fd\":{},\"count\":{}", fd, count),
@@ -202,7 +216,7 @@ pub unsafe extern "C" fn my_write(fd: c_int, buf: *const c_void, count: usize) -
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_socket(domain: c_int, ty: c_int, protocol: c_int) -> c_int {
-    if !should_log("socket") { return unsafe { libc::socket(domain, ty, protocol) } }
+    if !should_log(4) { return unsafe { libc::socket(domain, ty, protocol) } }
     let ret = unsafe { libc::socket(domain, ty, protocol) };
     log_event(
         "socket",
@@ -214,7 +228,7 @@ pub unsafe extern "C" fn my_socket(domain: c_int, ty: c_int, protocol: c_int) ->
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_connect(socket: c_int, address: *const libc::sockaddr, len: libc::socklen_t) -> c_int {
-    if !should_log("connect") { return unsafe { libc::connect(socket, address, len) } }
+    if !should_log(5) { return unsafe { libc::connect(socket, address, len) } }
     log_event(
         "connect",
         format_args!("\"socket\":{},\"len\":{}", socket, len),
@@ -225,7 +239,7 @@ pub unsafe extern "C" fn my_connect(socket: c_int, address: *const libc::sockadd
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_send(socket: c_int, buf: *const c_void, len: usize, flags: c_int) -> isize {
-    if !should_log("send") { return unsafe { libc::send(socket, buf, len, flags) } }
+    if !should_log(6) { return unsafe { libc::send(socket, buf, len, flags) } }
     log_event(
         "send",
         format_args!("\"socket\":{},\"len\":{},\"flags\":{}", socket, len, flags),
@@ -236,7 +250,7 @@ pub unsafe extern "C" fn my_send(socket: c_int, buf: *const c_void, len: usize, 
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_recv(socket: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize {
-    if !should_log("recv") { return unsafe { libc::recv(socket, buf, len, flags) } }
+    if !should_log(7) { return unsafe { libc::recv(socket, buf, len, flags) } }
     let ret = unsafe { libc::recv(socket, buf, len, flags) };
     log_event(
         "recv",
@@ -248,8 +262,9 @@ pub unsafe extern "C" fn my_recv(socket: c_int, buf: *mut c_void, len: usize, fl
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_stat(path: *const c_char, buf: *mut libc::stat) -> c_int {
-    if !should_log("stat") { return unsafe { libc::stat(path, buf) } }
-    let path_str = unsafe { CStr::from_ptr(path).to_string_lossy() };
+    if !should_log(8) { return unsafe { libc::stat(path, buf) } }
+    let path_bytes = unsafe { CStr::from_ptr(path).to_bytes() };
+    let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
     log_event(
         "stat",
         format_args!("\"path\":\"{}\"", path_str),
@@ -260,8 +275,9 @@ pub unsafe extern "C" fn my_stat(path: *const c_char, buf: *mut libc::stat) -> c
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_execve(path: *const c_char, argv: *const *mut c_char, envp: *const *mut c_char) -> c_int {
-    if !should_log("execve") { return unsafe { libc::execve(path, argv, envp) } }
-    let path_str = unsafe { CStr::from_ptr(path).to_string_lossy() };
+    if !should_log(9) { return unsafe { libc::execve(path, argv, envp) } }
+    let path_bytes = unsafe { CStr::from_ptr(path).to_bytes() };
+    let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
     log_event(
         "execve",
         format_args!("\"path\":\"{}\"", path_str),
@@ -272,7 +288,7 @@ pub unsafe extern "C" fn my_execve(path: *const c_char, argv: *const *mut c_char
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_fork() -> libc::pid_t {
-    if !should_log("fork") { return unsafe { libc::fork() } }
+    if !should_log(10) { return unsafe { libc::fork() } }
     log_event(
         "fork",
         format_args!(""),
@@ -283,7 +299,7 @@ pub unsafe extern "C" fn my_fork() -> libc::pid_t {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_exit(status: c_int) -> ! {
-    if should_log("exit") {
+    if should_log(11) {
         log_event(
             "exit",
             format_args!("\"status\":{}", status),
@@ -295,7 +311,7 @@ pub unsafe extern "C" fn my_exit(status: c_int) -> ! {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_mmap(addr: *mut c_void, len: usize, prot: c_int, flags: c_int, fd: c_int, offset: libc::off_t) -> *mut c_void {
-    if !should_log("mmap") { return unsafe { libc::mmap(addr, len, prot, flags, fd, offset) } }
+    if !should_log(12) { return unsafe { libc::mmap(addr, len, prot, flags, fd, offset) } }
     log_event(
         "mmap",
         format_args!("\"len\":{},\"prot\":{},\"flags\":{},\"fd\":{},\"offset\":{}", len, prot, flags, fd, offset),
@@ -306,7 +322,7 @@ pub unsafe extern "C" fn my_mmap(addr: *mut c_void, len: usize, prot: c_int, fla
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_munmap(addr: *mut c_void, len: usize) -> c_int {
-    if !should_log("munmap") { return unsafe { libc::munmap(addr, len) } }
+    if !should_log(13) { return unsafe { libc::munmap(addr, len) } }
     log_event(
         "munmap",
         format_args!("\"len\":{}", len),
