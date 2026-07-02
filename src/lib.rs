@@ -115,6 +115,24 @@ fn should_log(bit: u32) -> bool {
     (FILTER_MASK.load(Ordering::Relaxed) & (1 << bit)) != 0
 }
 
+struct JsonEscape<'a>(&'a str);
+impl<'a> core::fmt::Display for JsonEscape<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        for c in self.0.chars() {
+            match c {
+                '"' => write!(f, "\\\"")?,
+                '\\' => write!(f, "\\\\")?,
+                '\n' => write!(f, "\\n")?,
+                '\r' => write!(f, "\\r")?,
+                '\t' => write!(f, "\\t")?,
+                c if c < '\x20' => write!(f, "\\u{:04x}", c as u32)?,
+                c => write!(f, "{}", c)?,
+            }
+        }
+        Ok(())
+    }
+}
+
 fn get_timestamp_str(buf: &mut [u8]) -> usize {
     let mut tv = libc::timeval { tv_sec: 0, tv_usec: 0 };
     unsafe { libc::gettimeofday(&mut tv, std::ptr::null_mut()) };
@@ -175,10 +193,11 @@ pub unsafe extern "C" fn my_open(path: *const c_char, oflag: c_int, mode: c_int)
     let len = unsafe { libc::strnlen(path, 1024) };
     let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
     let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
+    let escaped = JsonEscape(path_str);
     log_event(
         "open",
-        format_args!("\"path\":\"{}\",\"oflag\":{},\"mode\":{}", path_str, oflag, mode),
-        format_args!("open(\"{}\", {}, {})", path_str, oflag, mode)
+        format_args!("\"path\":\"{}\",\"oflag\":{},\"mode\":{}", escaped, oflag, mode),
+        format_args!("open(\"{}\", {}, {})", escaped, oflag, mode)
     );
     unsafe { libc::open(path, oflag, mode) }
 }
@@ -269,10 +288,11 @@ pub unsafe extern "C" fn my_stat(path: *const c_char, buf: *mut libc::stat) -> c
     let len = unsafe { libc::strnlen(path, 1024) };
     let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
     let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
+    let escaped = JsonEscape(path_str);
     log_event(
         "stat",
-        format_args!("\"path\":\"{}\"", path_str),
-        format_args!("stat(\"{}\", buf)", path_str)
+        format_args!("\"path\":\"{}\"", escaped),
+        format_args!("stat(\"{}\", buf)", escaped)
     );
     unsafe { libc::stat(path, buf) }
 }
@@ -283,10 +303,11 @@ pub unsafe extern "C" fn my_execve(path: *const c_char, argv: *const *mut c_char
     let len = unsafe { libc::strnlen(path, 1024) };
     let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
     let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
+    let escaped = JsonEscape(path_str);
     log_event(
         "execve",
-        format_args!("\"path\":\"{}\"", path_str),
-        format_args!("execve(\"{}\", argv, envp)", path_str)
+        format_args!("\"path\":\"{}\"", escaped),
+        format_args!("execve(\"{}\", argv, envp)", escaped)
     );
     unsafe { libc::execve(path, argv, envp) }
 }
