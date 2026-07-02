@@ -1,1 +1,4 @@
-This is text from inside test.txt.
+hellois text from inside test.txt.
+This is text from inside test.txt, but this is the next line.
+This is text from inside test.txt, but this is the third line.
+This is the last (fourth) line of test.txt.
