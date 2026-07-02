@@ -2,10 +2,12 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::io::Write;
 
-static mut LOG_FD: c_int = 2;
-static mut FILTER_MASK: u32 = 0xFFFFFFFF;
-static mut JSON_OUTPUT: bool = false;
-static mut ECS_OUTPUT: bool = false;
+use core::sync::atomic::{AtomicI32, AtomicU32, AtomicBool, Ordering};
+
+static LOG_FD: AtomicI32 = AtomicI32::new(2);
+static FILTER_MASK: AtomicU32 = AtomicU32::new(0xFFFFFFFF);
+static JSON_OUTPUT: AtomicBool = AtomicBool::new(false);
+static ECS_OUTPUT: AtomicBool = AtomicBool::new(false);
 
 #[used]
 #[unsafe(link_section = "__DATA,__mod_init_func")]
@@ -16,31 +18,31 @@ static INITIALIZE: unsafe extern "C" fn() = {
         if !out_ptr.is_null() {
             let fd = unsafe { libc::open(out_ptr, libc::O_CREAT | libc::O_WRONLY | libc::O_APPEND | libc::O_CLOEXEC, 0o666) };
             if fd >= 0 {
-                unsafe { LOG_FD = fd; }
+                LOG_FD.store(fd, Ordering::Relaxed);
             }
         }
         
         let env_filter = b"MTRACE_FILTER\0".as_ptr() as *const c_char;
         let filter_ptr = unsafe { libc::getenv(env_filter) };
         if !filter_ptr.is_null() {
-            unsafe { FILTER_MASK = 0; }
+            FILTER_MASK.store(0, Ordering::Relaxed);
             if let Ok(filter_str) = core::str::from_utf8(unsafe { CStr::from_ptr(filter_ptr).to_bytes() }) {
                 for s in filter_str.split(',') {
                     match s.trim() {
-                        "open" => unsafe { FILTER_MASK |= 1 << 0; },
-                        "close" => unsafe { FILTER_MASK |= 1 << 1; },
-                        "read" => unsafe { FILTER_MASK |= 1 << 2; },
-                        "write" => unsafe { FILTER_MASK |= 1 << 3; },
-                        "socket" => unsafe { FILTER_MASK |= 1 << 4; },
-                        "connect" => unsafe { FILTER_MASK |= 1 << 5; },
-                        "send" => unsafe { FILTER_MASK |= 1 << 6; },
-                        "recv" => unsafe { FILTER_MASK |= 1 << 7; },
-                        "stat" => unsafe { FILTER_MASK |= 1 << 8; },
-                        "execve" => unsafe { FILTER_MASK |= 1 << 9; },
-                        "fork" => unsafe { FILTER_MASK |= 1 << 10; },
-                        "exit" => unsafe { FILTER_MASK |= 1 << 11; },
-                        "mmap" => unsafe { FILTER_MASK |= 1 << 12; },
-                        "munmap" => unsafe { FILTER_MASK |= 1 << 13; },
+                        "open" => { FILTER_MASK.fetch_or(1 << 0, Ordering::Relaxed); },
+                        "close" => { FILTER_MASK.fetch_or(1 << 1, Ordering::Relaxed); },
+                        "read" => { FILTER_MASK.fetch_or(1 << 2, Ordering::Relaxed); },
+                        "write" => { FILTER_MASK.fetch_or(1 << 3, Ordering::Relaxed); },
+                        "socket" => { FILTER_MASK.fetch_or(1 << 4, Ordering::Relaxed); },
+                        "connect" => { FILTER_MASK.fetch_or(1 << 5, Ordering::Relaxed); },
+                        "send" => { FILTER_MASK.fetch_or(1 << 6, Ordering::Relaxed); },
+                        "recv" => { FILTER_MASK.fetch_or(1 << 7, Ordering::Relaxed); },
+                        "stat" => { FILTER_MASK.fetch_or(1 << 8, Ordering::Relaxed); },
+                        "execve" => { FILTER_MASK.fetch_or(1 << 9, Ordering::Relaxed); },
+                        "fork" => { FILTER_MASK.fetch_or(1 << 10, Ordering::Relaxed); },
+                        "exit" => { FILTER_MASK.fetch_or(1 << 11, Ordering::Relaxed); },
+                        "mmap" => { FILTER_MASK.fetch_or(1 << 12, Ordering::Relaxed); },
+                        "munmap" => { FILTER_MASK.fetch_or(1 << 13, Ordering::Relaxed); },
                         _ => {}
                     }
                 }
@@ -50,24 +52,24 @@ static INITIALIZE: unsafe extern "C" fn() = {
         let env_json = b"MTRACE_JSON\0".as_ptr() as *const c_char;
         let json_ptr = unsafe { libc::getenv(env_json) };
         if !json_ptr.is_null() {
-            unsafe { JSON_OUTPUT = true; }
+            JSON_OUTPUT.store(true, Ordering::Relaxed);
         }
 
         let env_ecs = b"MTRACE_ECS\0".as_ptr() as *const c_char;
         let ecs_ptr = unsafe { libc::getenv(env_ecs) };
         if !ecs_ptr.is_null() {
-            unsafe { ECS_OUTPUT = true; }
+            ECS_OUTPUT.store(true, Ordering::Relaxed);
         }
 
-        if unsafe { ECS_OUTPUT } {
+        if ECS_OUTPUT.load(Ordering::Relaxed) {
             let msg = b"{\"@timestamp\":\"2000-01-01T00:00:00Z\",\"event\":{\"action\":\"init\"},\"message\":\"mactrace active\"}\n\0";
-            unsafe { libc::write(LOG_FD, msg.as_ptr() as *const c_void, msg.len() - 1); }
-        } else if unsafe { JSON_OUTPUT } {
+            unsafe { libc::write(LOG_FD.load(Ordering::Relaxed), msg.as_ptr() as *const c_void, msg.len() - 1); }
+        } else if JSON_OUTPUT.load(Ordering::Relaxed) {
             let msg = b"{\"event\":\"mactrace_active\"}\n\0";
-            unsafe { libc::write(LOG_FD, msg.as_ptr() as *const c_void, msg.len() - 1); }
+            unsafe { libc::write(LOG_FD.load(Ordering::Relaxed), msg.as_ptr() as *const c_void, msg.len() - 1); }
         } else {
             let msg = b"[mactrace] Active! Monitoring system calls...\n\0";
-            unsafe { libc::write(LOG_FD, msg.as_ptr() as *const c_void, msg.len() - 1); }
+            unsafe { libc::write(LOG_FD.load(Ordering::Relaxed), msg.as_ptr() as *const c_void, msg.len() - 1); }
         }
     }
     init
@@ -110,7 +112,7 @@ pub static INTERPOSE_ARRAY: [Interpose; 14] = [
 
 #[inline(always)]
 fn should_log(bit: u32) -> bool {
-    unsafe { (FILTER_MASK & (1 << bit)) != 0 }
+    (FILTER_MASK.load(Ordering::Relaxed) & (1 << bit)) != 0
 }
 
 fn get_timestamp_str(buf: &mut [u8]) -> usize {
@@ -146,12 +148,12 @@ fn log_event(syscall: &str, args_content: core::fmt::Arguments, plain_msg: core:
     let mut buf = [0u8; 1024];
     let mut slice = &mut buf[..];
     
-    if unsafe { ECS_OUTPUT } {
+    if ECS_OUTPUT.load(Ordering::Relaxed) {
         let mut time_buf = [0u8; 32];
         let time_len = get_iso8601_str(&mut time_buf);
         let time_str = core::str::from_utf8(&time_buf[..time_len]).unwrap_or("");
         let _ = write!(slice, "{{\"@timestamp\":\"{}\",\"event\":{{\"category\":[\"process\"],\"action\":\"{}\"}},\"message\":\"[mactrace] Caught {}\",\"mactrace\":{{{}}}}}\n", time_str, syscall, plain_msg, args_content);
-    } else if unsafe { JSON_OUTPUT } {
+    } else if JSON_OUTPUT.load(Ordering::Relaxed) {
         let mut time_buf = [0u8; 32];
         let time_len = get_timestamp_str(&mut time_buf);
         let time_str = core::str::from_utf8(&time_buf[..time_len]).unwrap_or("");
@@ -164,13 +166,14 @@ fn log_event(syscall: &str, args_content: core::fmt::Arguments, plain_msg: core:
     }
     
     let len = 1024 - slice.len();
-    unsafe { libc::write(LOG_FD, buf.as_ptr() as *const c_void, len); }
+    unsafe { libc::write(LOG_FD.load(Ordering::Relaxed), buf.as_ptr() as *const c_void, len); }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_open(path: *const c_char, oflag: c_int, mode: c_int) -> c_int {
     if !should_log(0) { return unsafe { libc::open(path, oflag, mode) } }
-    let path_bytes = unsafe { CStr::from_ptr(path).to_bytes() };
+    let len = unsafe { libc::strnlen(path, 1024) };
+    let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
     let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
     log_event(
         "open",
@@ -263,7 +266,8 @@ pub unsafe extern "C" fn my_recv(socket: c_int, buf: *mut c_void, len: usize, fl
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_stat(path: *const c_char, buf: *mut libc::stat) -> c_int {
     if !should_log(8) { return unsafe { libc::stat(path, buf) } }
-    let path_bytes = unsafe { CStr::from_ptr(path).to_bytes() };
+    let len = unsafe { libc::strnlen(path, 1024) };
+    let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
     let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
     log_event(
         "stat",
@@ -276,7 +280,8 @@ pub unsafe extern "C" fn my_stat(path: *const c_char, buf: *mut libc::stat) -> c
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_execve(path: *const c_char, argv: *const *mut c_char, envp: *const *mut c_char) -> c_int {
     if !should_log(9) { return unsafe { libc::execve(path, argv, envp) } }
-    let path_bytes = unsafe { CStr::from_ptr(path).to_bytes() };
+    let len = unsafe { libc::strnlen(path, 1024) };
+    let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
     let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
     log_event(
         "execve",
