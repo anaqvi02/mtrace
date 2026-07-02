@@ -71,7 +71,7 @@ interpose!(my_unlink, libc::unlink),
 ## What Can (and Cannot) Be Traced
 Apple's System Integrity Protection (SIP) creates a hard boundary around core OS components. Here is a quick cheat sheet on what you can and cannot trace:
 
-### ❌ Cannot Be Traced
+### Cannot Be Traced
 There are three main categories of executables that `mtrace` cannot touch:
 
 1. **System Utilities (Blocked by SIP):** Any core Apple-signed tool in protected directories (`/bin/ls`, `/bin/cat`, `/usr/bin/curl`).
@@ -79,7 +79,7 @@ There are three main categories of executables that `mtrace` cannot touch:
 *(Error signature: `terminating because inserted dylib ... incompatible architecture (have 'arm64', need 'arm64e')`)*
 3. **Strict Hardened Runtime:** Apps from the Mac App Store with "Library Validation" strictly enforced will block the tracer. However, unlike the first two categories, you can bypass this by simply removing the signature (`codesign --remove-signature <app>`).
 
-### ✅ Can Be Traced (Standard `arm64`)
+### Can Be Traced (Standard `arm64`)
 Any third-party software, developer tool, or custom script that is standard `arm64` and lacks strict Library Validation will work perfectly.
 - **Homebrew Packages:** `/opt/homebrew/bin/python3`, `/opt/homebrew/bin/curl`, `wget`, `ffmpeg`, `nmap`
 - **Developer Runtimes:** Python (`python3 script.py`), Node.js (`node index.js`), compiled C/Rust binaries (`./victim`)
