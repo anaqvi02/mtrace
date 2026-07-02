@@ -71,16 +71,16 @@ interpose!(my_unlink, libc::unlink),
 ## What Can (and Cannot) Be Traced
 Apple's System Integrity Protection (SIP) creates a hard boundary around core OS components. Here is a quick cheat sheet on what you can and cannot trace:
 
-### ❌ Cannot Be Traced (Blocked by SIP)
-Core Apple-signed system utilities and applications compiled for `arm64e` with restricted entitlements will immediately crash if you try to trace them.
-- **System Utilities:** `/bin/ls`, `/bin/cat`, `/bin/bash`
-- **System Network Tools:** `/usr/bin/curl`, `/usr/bin/ssh`
-- **First-Party Apple Apps:** Safari, Finder, Activity Monitor
+### ❌ Cannot Be Traced
+There are three main categories of executables that `mtrace` cannot touch:
 
+1. **System Utilities (Blocked by SIP):** Any core Apple-signed tool in protected directories (`/bin/ls`, `/bin/cat`, `/usr/bin/curl`).
+2. **`arm64e` Binaries:** Apple strictly restricts the `arm64e` architecture (which uses Pointer Authentication Codes) to their own first-party OS components. If you encounter a rare third-party app (like Spotify) that ships an `arm64e` binary, `dyld` will refuse to load our standard `arm64` tracer into it. 
 *(Error signature: `terminating because inserted dylib ... incompatible architecture (have 'arm64', need 'arm64e')`)*
+3. **Strict Hardened Runtime:** Apps from the Mac App Store with "Library Validation" strictly enforced will block the tracer. However, unlike the first two categories, you can bypass this by simply removing the signature (`codesign --remove-signature <app>`).
 
 ### ✅ Can Be Traced (Standard `arm64`)
 Any third-party software, developer tool, or custom script that is standard `arm64` and lacks strict Library Validation will work perfectly.
 - **Homebrew Packages:** `/opt/homebrew/bin/python3`, `/opt/homebrew/bin/curl`, `wget`, `ffmpeg`, `nmap`
 - **Developer Runtimes:** Python (`python3 script.py`), Node.js (`node index.js`), compiled C/Rust binaries (`./victim`)
-- **Third-Party Applications:** Steam, Discord, VS Code, Spotify (often require stripping their signature first if downloaded from the Mac App Store).
+- **Third-Party Applications:** Steam, Discord, VS Code (many large Electron and game apps disable Library Validation out of the box).
