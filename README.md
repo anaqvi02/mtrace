@@ -14,6 +14,12 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 - **Fast Filtering:** Use `-t` to seamlessly bypass the logging of noisy syscalls.
 - **Active Manipulation:** Because it intercepts calls in user-space, you can freely edit the Rust hooks to block telemetry, bypass license checks, or spoof network traffic. Ex: Very easy to implement TOCTOU exploits.
 
+## Why should you use this?
+- works w/o disabling sip and no sudo required (unlike dtrace/dtruss)
+- its fast and purpose-built (see below) (unlike Frida) (this cant do 99% of what Frida does, but this is a lot faster for this one purpose)
+- dead simple to modify (see --swapquickstart)
+- dead simple to use
+
 ## Quick Start
 
 ### 1. Build
@@ -91,9 +97,10 @@ Any third-party software, developer tool, or custom script that is standard `arm
 | `conn` / `send` / `recv` | 384 ns / 0.00038 ms | **404 ns / 0.00040 ms** | 2014 ns / 0.00201 ms |
 | `mmap` / `munmap` | 352 ns / 0.00035 ms | **362 ns / 0.00036 ms** | 1450 ns / 0.00145 ms |
 
+*(Note: In contrast, tiny improvements in other filtered calls, such as `stat` executing 16 ns faster, are purely statistical noise within the margin of error of CPU benchmarking).*
+
 ### *Side note on Socket
 You may notice that native `socket` creation took `2312 ns` natively, but running it through `mtrace` actually dropped the execution time down to `922 ns`. This is not an error!
 
 On macOS, `libnetwork.dylib` and other userspace XPC daemons (like the macOS Application Firewall or third-party monitors) hook into raw network calls for telemetry and security validation. By using `DYLD_INSERT_LIBRARIES` to aggressively interpose on the lowest-level `libc::socket` stub, `mtrace` inadvertently bypasses some of these higher-level Apple telemetry frameworks. The result is a tracer so efficient that it actively accelerates macOS networking by shedding the OS's native userspace telemetry bloat.
 
-*(Note: In contrast, tiny improvements in other filtered calls, such as `stat` executing 16 ns faster, are purely statistical noise within the margin of error of CPU benchmarking).*

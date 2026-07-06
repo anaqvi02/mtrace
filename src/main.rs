@@ -2,6 +2,19 @@ use std::process::Command;
 use std::env;
 use std::io;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU32, Ordering};
+
+static CHILD_PID: AtomicU32 = AtomicU32::new(0);
+
+extern "C" fn handle_signal(_sig: libc::c_int) {
+    let pid = CHILD_PID.load(Ordering::Relaxed);
+    if pid > 0 {
+        unsafe {
+            libc::kill(pid as libc::pid_t, libc::SIGKILL);
+        }
+    }
+    unsafe { libc::_exit(1) }
+}
 
 fn print_help() {
     println!("mtrace - High-speed macOS user-space system call tracer");
@@ -151,7 +164,16 @@ fn main() -> io::Result<()> {
         cmd.env("MTRACE_ECS", "1");
     }
 
-    let status = cmd.status()?;
+    let mut child = cmd.spawn()?;
+    CHILD_PID.store(child.id(), Ordering::Relaxed);
+
+    unsafe {
+        libc::signal(libc::SIGINT, handle_signal as usize);
+        libc::signal(libc::SIGTERM, handle_signal as usize);
+    }
+
+    let status = child.wait()?;
+    CHILD_PID.store(0, Ordering::Relaxed);
 
     if status.success() {
         println!("[mactrace] Command '{}' finished successfully!", cmd_name);
