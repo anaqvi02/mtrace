@@ -24,7 +24,7 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 - cannot trace Apple-signed system binaries or `arm64e` apps (blocked by SIP)
 - cannot inspect internal memory, CPU registers, or custom functions (unlike Frida or QBDI)
 - can be bypassed by malware that executes raw assembly syscalls (`svc 0x80`) instead of calling `libc`
-- only tracks the explicit 14 system/libc calls i made it hook (unlike `dtruss` which automatically catches everything crossing the kernel boundary)
+- only tracks the explicit 14 system/libc calls it hooks (unlike `dtruss` which automatically catches everything crossing the kernel boundary)
 - doesnt do a whole lot except for what its built to do
 
 ## Quick Start
@@ -49,13 +49,17 @@ Run any standard `arm64` macOS application under the tracer:
 
 ```bash
 # Basic usage
-mtrace mtrace python3 -c "print('hello')"
+mtrace python3 -c "print('hello')"
 
 # Filter for specific syscalls (comma-separated)
 mtrace -t open,socket,execve ./my_binary
 
 # Write logs to a file instead of stderr
 mtrace -o trace.log ./my_binary
+
+# Output logs in NDJSON or Elastic Common Schema (ECS) format for SIEM ingestion
+mtrace -j -o trace.json ./my_binary
+mtrace -e -o ecs_trace.json ./my_binary
 ```
 
 ## Dynamic Instrumentation (Swapping)
