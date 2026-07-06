@@ -6,13 +6,13 @@ Unlike Apple's native `dtruss` which requires disabling System Integrity Protect
 
 If you are a reverse engineer, malware analyst, or just want to debug a crashing application, `mtrace` gives you unparalleled visibility and control over what a process is doing, without ever touching your system's security settings.
 
-*This technically isnt a "system call" tracer, and instead traces libc/api calls.
+*This technically isnt a "system call" tracer, and instead traces libc/api calls. Close enough, though.
 
 ## Features
-- **Zero Sudo:** Run it instantly as a standard user.
+- **Zero Sudo required:** Run it instantly as a standard user.
 - **Microsecond Timestamps:** Accurately measure network latency and disk I/O.
 - **Fast Filtering:** Use `-t` to seamlessly bypass the logging of noisy syscalls.
-- **Active Manipulation:** Because it intercepts calls in user-space, you can freely edit the Rust hooks to block telemetry, bypass license checks, or spoof network traffic.
+- **Active Manipulation:** Because it intercepts calls in user-space, you can freely edit the Rust hooks to block telemetry, bypass license checks, or spoof network traffic. Ex: Very easy to implement TOCTOU exploits.
 
 ## Quick Start
 
@@ -45,22 +45,6 @@ mtrace -t open,socket,execve ./my_binary
 mtrace -o trace.log ./my_binary
 ```
 
-## How to Test
-We have included a dummy `victim` program in the `examples/` directory that generates fake file I/O, memory mappings, and network traffic.
-
-```bash
-cd examples
-gcc victim.c -o victim
-cd ..
-mtrace -t open,socket ./examples/victim
-``
-
-## Adding New Hooks
-`mtrace` makes it incredibly easy to add new hooks. Just open `src/lib.rs` and use the `interpose!` macro to intercept any function found in `libc`:
-```rust
-interpose!(my_unlink, libc::unlink),
-```
-
 ## What Can (and Cannot) Be Traced
 Apple's System Integrity Protection (SIP) creates a hard boundary around core OS components. Here is a quick cheat sheet on what you can and cannot trace:
 
@@ -80,7 +64,7 @@ Any third-party software, developer tool, or custom script that is standard `arm
 - **Basically anything that you might want to run this on works.**
 
 ## Benchmarks & Performance
-`mtrace` is designed to be a completely zero-overhead tracer. We do not use expensive string parsing or heap allocations on the hot path. Here is the 5-trial average of a 500,000 iteration heavy benchmark:
+`mtrace` is designed to be a completely zero-overhead tracer. No expensive string parsing or heap allocations on the hot path are used. Here is the 5-trial average of a 500,000 iteration heavy benchmark:
 
 | Syscall Category | Native Execution | Traced (Filtered Out) | Traced (Fully Logged) |
 | :--- | :--- | :--- | :--- |
@@ -92,7 +76,9 @@ Any third-party software, developer tool, or custom script that is standard `arm
 | `conn` / `send` / `recv` | 0.192s | **0.202s** | 1.007s |
 | `mmap` / `munmap` | 0.176s | **0.181s** | 0.725s |
 
-### The Socket Mystery
+### *Side note on Socket
 You may notice that native `socket` creation took `1.156s`, but running it through `mtrace` actually dropped the execution time down to `0.461s`. This is not an error!
 
 On macOS, `libnetwork.dylib` and other userspace XPC daemons (like the macOS Application Firewall or Little Snitch) hook into raw network calls for telemetry and security validation. By using `DYLD_INSERT_LIBRARIES` to aggressively interpose on the lowest-level `libc::socket` stub, `mtrace` forces execution to skip these higher-level Apple telemetry frameworks. The result is a tracer so efficient that it actively accelerates macOS networking by shedding the OS's native userspace telemetry bloat.
+
+I think, at least. I haven't done any testing on that front, but this is my hypothesis. Another theory is that something inside is failing gracefully and just continuing with the 

@@ -5,3 +5,4 @@
 examples/victim
 *.dylib
 *.dSYM
+test.txt
