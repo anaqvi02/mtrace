@@ -39,8 +39,8 @@ fn main() -> io::Result<()> {
     dylib_path.set_file_name("libmactrace_lib.dylib");
 
     if !dylib_path.exists() {
-        eprintln!("[mactrace] Error: Dylib not found at {}", dylib_path.display());
-        eprintln!("[mactrace] Make sure you built the project with `cargo build`");
+        eprintln!("[mt] Error: Dylib not found at {}", dylib_path.display());
+        eprintln!("[mt] Make sure you built the project with `cargo build`");
         std::process::exit(1);
     }
 
@@ -85,19 +85,19 @@ fn main() -> io::Result<()> {
             }
             swap_file = Some(args.remove(0));
         } else if args[0] == "--swapquickstart" {
-            println!("[mactrace] Downloading swap_quickstart.rs from GitHub...");
+            println!("[mt] Downloading swap_quickstart.rs from GitHub...");
             let status = Command::new("curl")
                 .args(["-sL", "https://raw.githubusercontent.com/anaqvi02/mtrace/main/examples/swap.rs", "-o", "swap_quickstart.rs"])
                 .status();
             
             match status {
                 Ok(s) if s.success() => {
-                    println!("[mactrace] Successfully downloaded swap_quickstart.rs");
-                    println!("[mactrace] You can now edit it and run: mt -s swap_quickstart.rs <command>");
+                    println!("[mt] Successfully downloaded swap_quickstart.rs");
+                    println!("[mt] You can now edit it and run: mt -s swap_quickstart.rs <command>");
                     std::process::exit(0);
                 }
                 _ => {
-                    eprintln!("[mactrace] Error: Failed to download the quickstart file. Check your internet connection or URL.");
+                    eprintln!("[mt] Error: Failed to download the quickstart file. Check your internet connection or URL.");
                     std::process::exit(1);
                 }
             }
@@ -131,13 +131,13 @@ fn main() -> io::Result<()> {
         let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros();
         let out_path = format!("/tmp/mtrace_swap_{}.dylib", ts);
         
-        println!("[mactrace] Compiling swap script: {} -> {}", swap_script, out_path);
+        println!("[mt] Compiling swap script: {} -> {}", swap_script, out_path);
         let status = Command::new("rustc")
             .args(["--crate-type", "cdylib", &swap_script, "-o", &out_path])
             .status()?;
             
         if !status.success() {
-            eprintln!("[mactrace] Error: Failed to compile swap file. Check your Rust code!");
+            eprintln!("[mt] Error: Failed to compile swap file. Check your Rust code!");
             std::process::exit(1);
         }
         compiled_swap_path = Some(out_path);
@@ -176,9 +176,9 @@ fn main() -> io::Result<()> {
     CHILD_PID.store(0, Ordering::Relaxed);
 
     if status.success() {
-        println!("[mactrace] Command '{}' finished successfully!", cmd_name);
+        println!("[mt] Command '{}' finished successfully!", cmd_name);
     } else {
-        println!("[mactrace] Command '{}' exited with status: {}", cmd_name, status);
+        println!("[mt] Command '{}' exited with status: {}", cmd_name, status);
     }
     
     if let Some(path) = compiled_swap_path {

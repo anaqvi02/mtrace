@@ -27,8 +27,8 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 ## Why should you NOT use this?
 - cannot trace Apple-signed system binaries or `arm64e` apps (blocked by SIP)
 - cannot inspect internal memory, CPU registers, or custom functions (unlike Frida or QBDI)
-- can be bypassed by malware that executes raw assembly syscalls (`svc 0x80`) instead of calling `libc`
-- only tracks the explicit 14 system/libc calls it hooks (unlike `dtruss` which automatically catches everything crossing the kernel boundary)
+- can be bypassed by things that executes raw assembly syscalls (`svc 0x80`) instead of calling `libc`
+- only tracks the explicit 25 system/libc calls it hooks (unlike `dtruss` which automatically catches everything crossing the kernel boundary)
 - doesnt do a whole lot except for what its built to do
 
 ## Quick Start
@@ -69,7 +69,7 @@ mtrace -e -o ecs_trace.json ./my_binary
 ## Dynamic Instrumentation (Swapping)
 `mtrace` is not just a passive logger; it is a full **Dynamic Injection Engine**. You can inject custom Rust logic directly into the hot path of the traced application to block system calls, spoof returns, or build powerful custom sandboxes.
 
-To get started quickly, download the standard 14-hook template:
+To get started quickly, download the standard 25-hook template:
 ```bash
 mtrace --swapquickstart
 ```
@@ -99,12 +99,22 @@ Any third-party software, developer tool, or custom script that is standard `arm
 - **Third-Party Applications:** Steam, Discord, VS Code (many large Electron and game apps disable Library Validation out of the box).
 - **Basically anything that you might want to run this on works.**
 
+## Tracked System Calls (25)
+`mtrace` currently tracks the following high-value system calls out of the box. Using the `-t` flag with a comma-separated list of these names will allow you to filter the output.
+
+- **File / IO:** `open`, `close`, `read`, `write`, `stat`, `fstat`, `lstat`
+- **File System / Dir:** `rename`, `unlink`, `mkdir`, `rmdir`
+- **Process & Mem:** `execve`, `fork`, `exit`, `mmap`, `munmap`
+- **Networking:** `socket`, `connect`, `send`, `recv`, `bind`, `listen`, `accept`, `sendto`, `recvfrom`
+
+
 ## Benchmarks & Performance
 `mtrace` is designed to be a completely zero-overhead tracer. No expensive string parsing or heap allocations on the hot path are used. Here is the 5-trial average of a 500,000 iteration heavy benchmark:
 
 | Syscall Category | Native Execution | Traced (Filtered Out) | Traced (Fully Logged) |
 | :--- | :--- | :--- | :--- |
 | `stat` | 788 ns / 0.00078 ms | **772 ns / 0.00077 ms** | 1342 ns / 0.00134 ms |
+| `fstat` | 363 ns / 0.00036 ms | **389 ns / 0.00038 ms** | 835 ns / 0.00083 ms |
 | `open` / `close` | 3898 ns / 0.00389 ms | **4056 ns / 0.00405 ms** | 5262 ns / 0.00526 ms |
 | `read` | 268 ns / 0.00026 ms | **274 ns / 0.00027 ms** | 802 ns / 0.00080 ms |
 | `write` | 374 ns / 0.00037 ms | **380 ns / 0.00038 ms** | 904 ns / 0.00090 ms |

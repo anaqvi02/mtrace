@@ -24,6 +24,17 @@ static USER_ON_FORK: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 static USER_ON_EXIT: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 static USER_ON_MMAP: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 static USER_ON_MUNMAP: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_UNLINK: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_RENAME: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_LSTAT: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_FSTAT: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_BIND: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_LISTEN: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_ACCEPT: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_SENDTO: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_RECVFROM: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_MKDIR: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_RMDIR: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 
 
 #[used]
@@ -56,6 +67,17 @@ static INITIALIZE: unsafe extern "C" fn() = {
                 load_sym!("on_exit", USER_ON_EXIT);
                 load_sym!("on_mmap", USER_ON_MMAP);
                 load_sym!("on_munmap", USER_ON_MUNMAP);
+                load_sym!("on_unlink", USER_ON_UNLINK);
+                load_sym!("on_rename", USER_ON_RENAME);
+                load_sym!("on_lstat", USER_ON_LSTAT);
+                load_sym!("on_fstat", USER_ON_FSTAT);
+                load_sym!("on_bind", USER_ON_BIND);
+                load_sym!("on_listen", USER_ON_LISTEN);
+                load_sym!("on_accept", USER_ON_ACCEPT);
+                load_sym!("on_sendto", USER_ON_SENDTO);
+                load_sym!("on_recvfrom", USER_ON_RECVFROM);
+                load_sym!("on_mkdir", USER_ON_MKDIR);
+                load_sym!("on_rmdir", USER_ON_RMDIR);
             }
         }
 
@@ -89,6 +111,17 @@ static INITIALIZE: unsafe extern "C" fn() = {
                         "exit" => { FILTER_MASK.fetch_or(1 << 11, Ordering::Relaxed); },
                         "mmap" => { FILTER_MASK.fetch_or(1 << 12, Ordering::Relaxed); },
                         "munmap" => { FILTER_MASK.fetch_or(1 << 13, Ordering::Relaxed); },
+                        "unlink" => { FILTER_MASK.fetch_or(1 << 14, Ordering::Relaxed); },
+                        "rename" => { FILTER_MASK.fetch_or(1 << 15, Ordering::Relaxed); },
+                        "lstat" => { FILTER_MASK.fetch_or(1 << 16, Ordering::Relaxed); },
+                        "fstat" => { FILTER_MASK.fetch_or(1 << 17, Ordering::Relaxed); },
+                        "bind" => { FILTER_MASK.fetch_or(1 << 18, Ordering::Relaxed); },
+                        "listen" => { FILTER_MASK.fetch_or(1 << 19, Ordering::Relaxed); },
+                        "accept" => { FILTER_MASK.fetch_or(1 << 20, Ordering::Relaxed); },
+                        "sendto" => { FILTER_MASK.fetch_or(1 << 21, Ordering::Relaxed); },
+                        "recvfrom" => { FILTER_MASK.fetch_or(1 << 22, Ordering::Relaxed); },
+                        "mkdir" => { FILTER_MASK.fetch_or(1 << 23, Ordering::Relaxed); },
+                        "rmdir" => { FILTER_MASK.fetch_or(1 << 24, Ordering::Relaxed); },
                         _ => {}
                     }
                 }
@@ -114,7 +147,7 @@ static INITIALIZE: unsafe extern "C" fn() = {
             let msg = b"{\"event\":\"mactrace_active\"}\n\0";
             unsafe { libc::write(LOG_FD.load(Ordering::Relaxed), msg.as_ptr() as *const c_void, msg.len() - 1); }
         } else {
-            let msg = b"[mactrace] Active! Monitoring system calls...\n\0";
+            let msg = b"[mt] Active! Monitoring system calls...\n\0";
             unsafe { libc::write(LOG_FD.load(Ordering::Relaxed), msg.as_ptr() as *const c_void, msg.len() - 1); }
         }
     }
@@ -139,7 +172,7 @@ macro_rules! interpose {
 
 #[used]
 #[unsafe(link_section = "__DATA,__interpose")]
-pub static INTERPOSE_ARRAY: [Interpose; 14] = [
+pub static INTERPOSE_ARRAY: [Interpose; 25] = [
     interpose!(my_open, libc::open),
     interpose!(my_close, libc::close),
     interpose!(my_read, libc::read),
@@ -154,6 +187,17 @@ pub static INTERPOSE_ARRAY: [Interpose; 14] = [
     interpose!(my_exit, libc::exit),
     interpose!(my_mmap, libc::mmap),
     interpose!(my_munmap, libc::munmap),
+    interpose!(my_unlink, libc::unlink),
+    interpose!(my_rename, libc::rename),
+    interpose!(my_lstat, libc::lstat),
+    interpose!(my_fstat, libc::fstat),
+    interpose!(my_bind, libc::bind),
+    interpose!(my_listen, libc::listen),
+    interpose!(my_accept, libc::accept),
+    interpose!(my_sendto, libc::sendto),
+    interpose!(my_recvfrom, libc::recvfrom),
+    interpose!(my_mkdir, libc::mkdir),
+    interpose!(my_rmdir, libc::rmdir),
 ];
 
 #[inline(always)]
@@ -216,7 +260,7 @@ fn log_event(syscall: &str, args_content: core::fmt::Arguments, plain_msg: core:
         let mut time_buf = [0u8; 32];
         let time_len = get_iso8601_str(&mut time_buf);
         let time_str = core::str::from_utf8(&time_buf[..time_len]).unwrap_or("");
-        let _ = write!(slice, "{{\"@timestamp\":\"{}\",\"event\":{{\"category\":[\"process\"],\"action\":\"{}\"}},\"message\":\"[mactrace] Caught {}\",\"mactrace\":{{{}}}}}\n", time_str, syscall, plain_msg, args_content);
+        let _ = write!(slice, "{{\"@timestamp\":\"{}\",\"event\":{{\"category\":[\"process\"],\"action\":\"{}\"}},\"message\":\"[mt] Caught {}\",\"mactrace\":{{{}}}}}\n", time_str, syscall, plain_msg, args_content);
     } else if JSON_OUTPUT.load(Ordering::Relaxed) {
         let mut time_buf = [0u8; 32];
         let time_len = get_timestamp_str(&mut time_buf);
@@ -226,7 +270,7 @@ fn log_event(syscall: &str, args_content: core::fmt::Arguments, plain_msg: core:
         let mut time_buf = [0u8; 32];
         let time_len = get_timestamp_str(&mut time_buf);
         let time_str = core::str::from_utf8(&time_buf[..time_len]).unwrap_or("");
-        let _ = write!(slice, "[{}] [mactrace] Caught {}\n", time_str, plain_msg);
+        let _ = write!(slice, "[{}] [mt] Caught {}\n", time_str, plain_msg);
     }
     
     let len = 1024 - slice.len();
@@ -472,4 +516,201 @@ pub unsafe extern "C" fn my_munmap(addr: *mut c_void, len: usize) -> c_int { uns
         format_args!("munmap(addr, {})", len)
     );
     unsafe { libc::munmap(addr, len) }
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_unlink(path: *const c_char) -> c_int { unsafe {
+    let p = USER_ON_UNLINK.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*const c_char) -> c_int = core::mem::transmute(p);
+        return func(path);
+    }
+    if !should_log(14) { return unsafe { libc::unlink(path) } }
+    let len = unsafe { libc::strnlen(path, 1024) };
+    let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
+    let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
+    let escaped = JsonEscape(path_str);
+    log_event(
+        "unlink",
+        format_args!("\"path\":\"{}\"", escaped),
+        format_args!("unlink(\"{}\")", escaped)
+    );
+    unsafe { libc::unlink(path) }
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_rename(old: *const c_char, new: *const c_char) -> c_int { unsafe {
+    let p = USER_ON_RENAME.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*const c_char, *const c_char) -> c_int = core::mem::transmute(p);
+        return func(old, new);
+    }
+    if !should_log(15) { return unsafe { libc::rename(old, new) } }
+    let l_old = unsafe { libc::strnlen(old, 1024) };
+    let l_new = unsafe { libc::strnlen(new, 1024) };
+    let old_str = core::str::from_utf8(unsafe { core::slice::from_raw_parts(old as *const u8, l_old) }).unwrap_or("<invalid_utf8>");
+    let new_str = core::str::from_utf8(unsafe { core::slice::from_raw_parts(new as *const u8, l_new) }).unwrap_or("<invalid_utf8>");
+    let esc_old = JsonEscape(old_str);
+    let esc_new = JsonEscape(new_str);
+    log_event(
+        "rename",
+        format_args!("\"old\":\"{}\",\"new\":\"{}\"", esc_old, esc_new),
+        format_args!("rename(\"{}\", \"{}\")", esc_old, esc_new)
+    );
+    unsafe { libc::rename(old, new) }
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_lstat(path: *const c_char, buf: *mut libc::stat) -> c_int { unsafe {
+    let p = USER_ON_LSTAT.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*const c_char, *mut libc::stat) -> c_int = core::mem::transmute(p);
+        return func(path, buf);
+    }
+    if !should_log(16) { return unsafe { libc::lstat(path, buf) } }
+    let len = unsafe { libc::strnlen(path, 1024) };
+    let path_str = core::str::from_utf8(unsafe { core::slice::from_raw_parts(path as *const u8, len) }).unwrap_or("<invalid_utf8>");
+    let escaped = JsonEscape(path_str);
+    log_event(
+        "lstat",
+        format_args!("\"path\":\"{}\"", escaped),
+        format_args!("lstat(\"{}\", buf)", escaped)
+    );
+    unsafe { libc::lstat(path, buf) }
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_fstat(fildes: c_int, buf: *mut libc::stat) -> c_int { unsafe {
+    let p = USER_ON_FSTAT.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *mut libc::stat) -> c_int = core::mem::transmute(p);
+        return func(fildes, buf);
+    }
+    if !should_log(17) { return unsafe { libc::fstat(fildes, buf) } }
+    log_event(
+        "fstat",
+        format_args!("\"fildes\":{}", fildes),
+        format_args!("fstat({}, buf)", fildes)
+    );
+    unsafe { libc::fstat(fildes, buf) }
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_bind(socket: c_int, address: *const libc::sockaddr, address_len: libc::socklen_t) -> c_int { unsafe {
+    let p = USER_ON_BIND.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *const libc::sockaddr, libc::socklen_t) -> c_int = core::mem::transmute(p);
+        return func(socket, address, address_len);
+    }
+    if !should_log(18) { return unsafe { libc::bind(socket, address, address_len) } }
+    log_event(
+        "bind",
+        format_args!("\"socket\":{},\"address_len\":{}", socket, address_len),
+        format_args!("bind({}, address, {})", socket, address_len)
+    );
+    unsafe { libc::bind(socket, address, address_len) }
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_listen(socket: c_int, backlog: c_int) -> c_int { unsafe {
+    let p = USER_ON_LISTEN.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, c_int) -> c_int = core::mem::transmute(p);
+        return func(socket, backlog);
+    }
+    if !should_log(19) { return unsafe { libc::listen(socket, backlog) } }
+    log_event(
+        "listen",
+        format_args!("\"socket\":{},\"backlog\":{}", socket, backlog),
+        format_args!("listen({}, {})", socket, backlog)
+    );
+    unsafe { libc::listen(socket, backlog) }
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_accept(socket: c_int, address: *mut libc::sockaddr, address_len: *mut libc::socklen_t) -> c_int { unsafe {
+    let p = USER_ON_ACCEPT.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> c_int = core::mem::transmute(p);
+        return func(socket, address, address_len);
+    }
+    if !should_log(20) { return unsafe { libc::accept(socket, address, address_len) } }
+    let ret = unsafe { libc::accept(socket, address, address_len) };
+    log_event(
+        "accept",
+        format_args!("\"socket\":{},\"ret\":{}", socket, ret),
+        format_args!("accept({}, address, address_len) -> {}", socket, ret)
+    );
+    ret
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_sendto(socket: c_int, buf: *const c_void, len: usize, flags: c_int, dest_addr: *const libc::sockaddr, dest_len: libc::socklen_t) -> isize { unsafe {
+    let p = USER_ON_SENDTO.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *const c_void, usize, c_int, *const libc::sockaddr, libc::socklen_t) -> isize = core::mem::transmute(p);
+        return func(socket, buf, len, flags, dest_addr, dest_len);
+    }
+    if !should_log(21) { return unsafe { libc::sendto(socket, buf, len, flags, dest_addr, dest_len) } }
+    log_event(
+        "sendto",
+        format_args!("\"socket\":{},\"len\":{},\"flags\":{},\"dest_len\":{}", socket, len, flags, dest_len),
+        format_args!("sendto({}, buf, {}, {}, dest_addr, {})", socket, len, flags, dest_len)
+    );
+    unsafe { libc::sendto(socket, buf, len, flags, dest_addr, dest_len) }
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_recvfrom(socket: c_int, buf: *mut c_void, len: usize, flags: c_int, address: *mut libc::sockaddr, address_len: *mut libc::socklen_t) -> isize { unsafe {
+    let p = USER_ON_RECVFROM.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *mut c_void, usize, c_int, *mut libc::sockaddr, *mut libc::socklen_t) -> isize = core::mem::transmute(p);
+        return func(socket, buf, len, flags, address, address_len);
+    }
+    if !should_log(22) { return unsafe { libc::recvfrom(socket, buf, len, flags, address, address_len) } }
+    let ret = unsafe { libc::recvfrom(socket, buf, len, flags, address, address_len) };
+    log_event(
+        "recvfrom",
+        format_args!("\"socket\":{},\"len\":{},\"flags\":{},\"ret\":{}", socket, len, flags, ret),
+        format_args!("recvfrom({}, buf, {}, {}, address, address_len) -> {}", socket, len, flags, ret)
+    );
+    ret
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_mkdir(path: *const c_char, mode: libc::mode_t) -> c_int { unsafe {
+    let p = USER_ON_MKDIR.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*const c_char, libc::mode_t) -> c_int = core::mem::transmute(p);
+        return func(path, mode);
+    }
+    if !should_log(23) { return unsafe { libc::mkdir(path, mode) } }
+    let len = unsafe { libc::strnlen(path, 1024) };
+    let path_str = core::str::from_utf8(unsafe { core::slice::from_raw_parts(path as *const u8, len) }).unwrap_or("<invalid_utf8>");
+    let escaped = JsonEscape(path_str);
+    log_event(
+        "mkdir",
+        format_args!("\"path\":\"{}\",\"mode\":{}", escaped, mode),
+        format_args!("mkdir(\"{}\", {})", escaped, mode)
+    );
+    unsafe { libc::mkdir(path, mode) }
+}}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn my_rmdir(path: *const c_char) -> c_int { unsafe {
+    let p = USER_ON_RMDIR.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*const c_char) -> c_int = core::mem::transmute(p);
+        return func(path);
+    }
+    if !should_log(24) { return unsafe { libc::rmdir(path) } }
+    let len = unsafe { libc::strnlen(path, 1024) };
+    let path_str = core::str::from_utf8(unsafe { core::slice::from_raw_parts(path as *const u8, len) }).unwrap_or("<invalid_utf8>");
+    let escaped = JsonEscape(path_str);
+    log_event(
+        "rmdir",
+        format_args!("\"path\":\"{}\"", escaped),
+        format_args!("rmdir(\"{}\")", escaped)
+    );
+    unsafe { libc::rmdir(path) }
 }}
