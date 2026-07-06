@@ -95,3 +95,5 @@ Any third-party software, developer tool, or custom script that is standard `arm
 You may notice that native `socket` creation took `2312 ns` natively, but running it through `mtrace` actually dropped the execution time down to `922 ns`. This is not an error!
 
 On macOS, `libnetwork.dylib` and other userspace XPC daemons (like the macOS Application Firewall or third-party monitors) hook into raw network calls for telemetry and security validation. By using `DYLD_INSERT_LIBRARIES` to aggressively interpose on the lowest-level `libc::socket` stub, `mtrace` inadvertently bypasses some of these higher-level Apple telemetry frameworks. The result is a tracer so efficient that it actively accelerates macOS networking by shedding the OS's native userspace telemetry bloat.
+
+*(Note: In contrast, tiny improvements in other filtered calls, such as `stat` executing 16 ns faster, are purely statistical noise within the margin of error of CPU benchmarking).*
