@@ -10,7 +10,7 @@ Unlike Apple's native `dtruss` which requires disabling System Integrity Protect
 
 If you are a reverse engineer, malware analyst, or just want to debug a crashing application, `mtrace` gives you unparalleled visibility and control over what a process is doing, without ever touching your system's security settings.
 
-*This technically isn't a "system call" tracer, and instead traces libc/api calls. Close enough, though.
+*This technically isnt a "system call" tracer, and instead traces libc/api calls. Close enough, though.
 
 ## Features
 - **Zero Sudo required:** Run it instantly as a standard user.
@@ -19,17 +19,17 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 - **Active Manipulation:** Because it intercepts calls in user-space, you can freely edit the Rust hooks to block telemetry, bypass license checks, or spoof network traffic. Ex: Very easy to implement TOCTOU exploits.
 
 ## Why should you use this?
-- works w/o disabling SIP and no sudo required (unlike dtrace/dtruss)
-- it's fast and purpose-built (see below) (unlike Frida) (this can't do 99% of what Frida does, but this is a lot faster for this one purpose)
+- works w/o disabling sip and no sudo required (unlike dtrace/dtruss)
+- its fast and purpose-built (see below) (unlike Frida) (this cant do 99% of what Frida does, but this is a lot faster for this one purpose)
 - dead simple to modify (see --swapquickstart)
 - dead simple to use
 
 ## Why should you NOT use this?
 - cannot trace Apple-signed system binaries or `arm64e` apps (blocked by SIP)
 - cannot inspect internal memory, CPU registers, or custom functions (unlike Frida or QBDI)
-- can be bypassed by things that execute raw assembly syscalls (`svc 0x80`) instead of calling `libc`
+- can be bypassed by things that executes raw assembly syscalls (`svc 0x80`) instead of calling `libc`
 - only tracks the explicit 25 system/libc calls it hooks (unlike `dtruss` which automatically catches everything crossing the kernel boundary)
-- doesn't do a whole lot except for what it's built to do
+- doesnt do a whole lot except for what its built to do
 
 ## Quick Start
 
