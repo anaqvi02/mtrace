@@ -240,6 +240,7 @@ pub unsafe extern "C" fn my_open(path: *const c_char, oflag: c_int, mode: c_int)
         let func: unsafe extern "C" fn(*const c_char, c_int, c_int) -> c_int = core::mem::transmute(p);
         return func(path, oflag, mode);
     }
+
     if !should_log(0) { return unsafe { libc::open(path, oflag, mode) } }
     let len = unsafe { libc::strnlen(path, 1024) };
     let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
