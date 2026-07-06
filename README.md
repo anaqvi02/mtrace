@@ -92,8 +92,6 @@ Any third-party software, developer tool, or custom script that is standard `arm
 | `mmap` / `munmap` | 352 ns / 0.00035 ms | **362 ns / 0.00036 ms** | 1450 ns / 0.00145 ms |
 
 ### *Side note on Socket
-You may notice that native `socket` creation took `1.156s`, but running it through `mtrace` actually dropped the execution time down to `0.461s`. This is not an error!
+You may notice that native `socket` creation took `2312 ns` natively, but running it through `mtrace` actually dropped the execution time down to `922 ns`. This is not an error!
 
-On macOS, `libnetwork.dylib` and other userspace XPC daemons (like the macOS Application Firewall or Little Snitch) hook into raw network calls for telemetry and security validation. By using `DYLD_INSERT_LIBRARIES` to aggressively interpose on the lowest-level `libc::socket` stub, `mtrace` forces execution to skip these higher-level Apple telemetry frameworks. The result is a tracer so efficient that it actively accelerates macOS networking by shedding the OS's native userspace telemetry bloat.
-
-I think, at least. I haven't done any testing on that front, but this is my hypothesis. Another theory is that something inside is failing gracefully and just continuing with the call, skipping all the XPC telemetry.
+On macOS, `libnetwork.dylib` and other userspace XPC daemons (like the macOS Application Firewall or third-party monitors) hook into raw network calls for telemetry and security validation. By using `DYLD_INSERT_LIBRARIES` to aggressively interpose on the lowest-level `libc::socket` stub, `mtrace` inadvertently bypasses some of these higher-level Apple telemetry frameworks. The result is a tracer so efficient that it actively accelerates macOS networking by shedding the OS's native userspace telemetry bloat.
