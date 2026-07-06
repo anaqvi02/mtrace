@@ -45,6 +45,21 @@ mtrace -t open,socket,execve ./my_binary
 mtrace -o trace.log ./my_binary
 ```
 
+## Dynamic Instrumentation (Swapping)
+`mtrace` is not just a passive logger; it is a full **Dynamic Injection Engine**. You can inject custom Rust logic directly into the hot path of the traced application to block system calls, spoof returns, or build powerful custom sandboxes.
+
+To get started quickly, download the standard 14-hook template:
+```bash
+mtrace --swapquickstart
+```
+This will fetch a boilerplate `swap_quickstart.rs` file into your current directory, pre-configured with all supported hooks.
+
+You can then write custom logic (e.g. returning `EACCES` when a specific file is opened) and run it with the `-s` flag:
+```bash
+mtrace -s swap_quickstart.rs ./your_binary
+```
+`mtrace` will automatically JIT-compile your script and dynamically hijack all matched syscalls instantly!
+
 ## What Can (and Cannot) Be Traced
 Apple's System Integrity Protection (SIP) creates a hard boundary around core OS components. Here is a quick cheat sheet on what you can and cannot trace:
 
