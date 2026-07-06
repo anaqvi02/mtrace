@@ -14,10 +14,16 @@ fn print_help() {
     println!("  -j, --json             Export logs in NDJSON format");
     println!("  -e, --ecs              Export logs in Elastic Common Schema (ECS) JSON format");
     println!("  -s, --swap <file.rs>   JIT compile and inject a custom Rust interceptor logic file");
+    println!("  --swapquickstart       Download a template swap.rs file to the current directory");
     println!("  -h, --help             Print this help message and exit");
     println!("");
     println!("Example:");
     println!("  mtrace -t open,socket -j -o trace.json curl http://example.com");
+}
+
+fn swapquickstart() -> io::Result<()> {
+
+    Ok(())
 }
 
 fn main() -> io::Result<()> {
@@ -70,6 +76,23 @@ fn main() -> io::Result<()> {
                 std::process::exit(1);
             }
             swap_file = Some(args.remove(0));
+        } else if args[0] == "--swapquickstart" {
+            println!("[mactrace] Downloading swap_quickstart.rs from GitHub...");
+            let status = Command::new("curl")
+                .args(["-sL", "https://raw.githubusercontent.com/anaqvi02/mtrace/main/examples/swap.rs", "-o", "swap_quickstart.rs"])
+                .status();
+            
+            match status {
+                Ok(s) if s.success() => {
+                    println!("[mactrace] Successfully downloaded swap_quickstart.rs");
+                    println!("[mactrace] You can now edit it and run: mt -s swap_quickstart.rs <command>");
+                    std::process::exit(0);
+                }
+                _ => {
+                    eprintln!("[mactrace] Error: Failed to download the quickstart file. Check your internet connection or URL.");
+                    std::process::exit(1);
+                }
+            }
         } else if args[0] == "-h" || args[0] == "-help" || args[0] == "--help" {
             print_help();
             std::process::exit(0);
@@ -77,7 +100,13 @@ fn main() -> io::Result<()> {
             eprintln!("Unknown argument: {}", args[0]);
             eprintln!("Use -h or --help for usage information.");
             std::process::exit(1);
-        } else {
+        }
+
+        else if args[0].starts_with("--swapquickstart"){
+            eprintln!("Creating quickstart swap file!");
+        }
+
+        else {
             break;
         }
     }
