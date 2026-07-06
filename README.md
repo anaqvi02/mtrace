@@ -20,6 +20,12 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 - dead simple to modify (see --swapquickstart)
 - dead simple to use
 
+## Why should you NOT use this?
+- cannot trace Apple-signed system binaries or `arm64e` apps (blocked by SIP)
+- cannot inspect internal memory, CPU registers, or custom functions (unlike Frida or QBDI)
+- can be bypassed by malware that executes raw assembly syscalls (`svc 0x80`) instead of calling `libc`
+- only tracks the explicit 14 system/libc calls we hooked (unlike `dtruss` which automatically catches everything crossing the kernel boundary)
+
 ## Quick Start
 
 ### 1. Build
