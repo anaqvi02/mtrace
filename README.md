@@ -1,8 +1,8 @@
 <img width="1280" height="168" alt="mtrace_banner" src="https://github.com/user-attachments/assets/f1b6d475-65a0-4213-ae22-281cc97a0fe1" />
 
-# mtrace
-
 <img width="1280" height="170" alt="b" src="https://github.com/user-attachments/assets/02d275e5-ec9f-4d85-ae85-eb27687be8cd" />
+
+---
 
 `mtrace` (aka `mt`,`mactrace`) is a high-speed, zero-privilege, user-space system call tracer for macOS. 
 
