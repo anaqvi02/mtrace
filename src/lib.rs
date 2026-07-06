@@ -2,17 +2,63 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::io::Write;
 
-use core::sync::atomic::{AtomicI32, AtomicU32, AtomicBool, Ordering};
+use core::sync::atomic::{AtomicI32, AtomicU32, AtomicBool, AtomicPtr, Ordering};
+use std::ptr;
 
 static LOG_FD: AtomicI32 = AtomicI32::new(2);
 static FILTER_MASK: AtomicU32 = AtomicU32::new(0xFFFFFFFF);
 static JSON_OUTPUT: AtomicBool = AtomicBool::new(false);
 static ECS_OUTPUT: AtomicBool = AtomicBool::new(false);
 
+static USER_ON_OPEN: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_CLOSE: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_READ: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_WRITE: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_SOCKET: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_CONNECT: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_SEND: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_RECV: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_STAT: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_EXECVE: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_FORK: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_EXIT: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_MMAP: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static USER_ON_MUNMAP: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+
+
 #[used]
 #[unsafe(link_section = "__DATA,__mod_init_func")]
 static INITIALIZE: unsafe extern "C" fn() = {
     unsafe extern "C" fn init() {
+
+        let env_swap = b"MTRACE_SWAP_DYLIB\0".as_ptr() as *const c_char;
+        let swap_ptr = unsafe { libc::getenv(env_swap) };
+        if !swap_ptr.is_null() {
+            let handle = unsafe { libc::dlopen(swap_ptr, libc::RTLD_LAZY | libc::RTLD_LOCAL) };
+            if !handle.is_null() {
+                macro_rules! load_sym {
+                    ($name:expr, $static_var:expr) => {
+                        let sym = unsafe { libc::dlsym(handle, concat!($name, "\0").as_ptr() as *const c_char) };
+                        if !sym.is_null() { $static_var.store(sym as *mut c_void, Ordering::Relaxed); }
+                    };
+                }
+                load_sym!("on_open", USER_ON_OPEN);
+                load_sym!("on_close", USER_ON_CLOSE);
+                load_sym!("on_read", USER_ON_READ);
+                load_sym!("on_write", USER_ON_WRITE);
+                load_sym!("on_socket", USER_ON_SOCKET);
+                load_sym!("on_connect", USER_ON_CONNECT);
+                load_sym!("on_send", USER_ON_SEND);
+                load_sym!("on_recv", USER_ON_RECV);
+                load_sym!("on_stat", USER_ON_STAT);
+                load_sym!("on_execve", USER_ON_EXECVE);
+                load_sym!("on_fork", USER_ON_FORK);
+                load_sym!("on_exit", USER_ON_EXIT);
+                load_sym!("on_mmap", USER_ON_MMAP);
+                load_sym!("on_munmap", USER_ON_MUNMAP);
+            }
+        }
+
         let env_out = b"MTRACE_OUTPUT\0".as_ptr() as *const c_char;
         let out_ptr = unsafe { libc::getenv(env_out) };
         if !out_ptr.is_null() {
@@ -188,7 +234,12 @@ fn log_event(syscall: &str, args_content: core::fmt::Arguments, plain_msg: core:
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_open(path: *const c_char, oflag: c_int, mode: c_int) -> c_int {
+pub unsafe extern "C" fn my_open(path: *const c_char, oflag: c_int, mode: c_int) -> c_int { unsafe {
+    let p = USER_ON_OPEN.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*const c_char, c_int, c_int) -> c_int = core::mem::transmute(p);
+        return func(path, oflag, mode);
+    }
     if !should_log(0) { return unsafe { libc::open(path, oflag, mode) } }
     let len = unsafe { libc::strnlen(path, 1024) };
     let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
@@ -200,10 +251,15 @@ pub unsafe extern "C" fn my_open(path: *const c_char, oflag: c_int, mode: c_int)
         format_args!("open(\"{}\", {}, {})", escaped, oflag, mode)
     );
     unsafe { libc::open(path, oflag, mode) }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_close(fd: c_int) -> c_int {
+pub unsafe extern "C" fn my_close(fd: c_int) -> c_int { unsafe {
+    let p = USER_ON_CLOSE.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int) -> c_int = core::mem::transmute(p);
+        return func(fd);
+    }
     if !should_log(1) { return unsafe { libc::close(fd) } }
     log_event(
         "close",
@@ -211,10 +267,15 @@ pub unsafe extern "C" fn my_close(fd: c_int) -> c_int {
         format_args!("close({})", fd)
     );
     unsafe { libc::close(fd) }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_read(fd: c_int, buf: *mut c_void, count: usize) -> isize {
+pub unsafe extern "C" fn my_read(fd: c_int, buf: *mut c_void, count: usize) -> isize { unsafe {
+    let p = USER_ON_READ.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *mut c_void, usize) -> isize = core::mem::transmute(p);
+        return func(fd, buf, count);
+    }
     if !should_log(2) { return unsafe { libc::read(fd, buf, count) } }
     let ret = unsafe { libc::read(fd, buf, count) };
     log_event(
@@ -223,10 +284,15 @@ pub unsafe extern "C" fn my_read(fd: c_int, buf: *mut c_void, count: usize) -> i
         format_args!("read({}, buf, {}) -> {}", fd, count, ret)
     );
     ret
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_write(fd: c_int, buf: *const c_void, count: usize) -> isize {
+pub unsafe extern "C" fn my_write(fd: c_int, buf: *const c_void, count: usize) -> isize { unsafe {
+    let p = USER_ON_WRITE.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *const c_void, usize) -> isize = core::mem::transmute(p);
+        return func(fd, buf, count);
+    }
     if !should_log(3) { return unsafe { libc::write(fd, buf, count) } }
     log_event(
         "write",
@@ -234,10 +300,15 @@ pub unsafe extern "C" fn my_write(fd: c_int, buf: *const c_void, count: usize) -
         format_args!("write({}, buf, {})", fd, count)
     );
     unsafe { libc::write(fd, buf, count) }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_socket(domain: c_int, ty: c_int, protocol: c_int) -> c_int {
+pub unsafe extern "C" fn my_socket(domain: c_int, ty: c_int, protocol: c_int) -> c_int { unsafe {
+    let p = USER_ON_SOCKET.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, c_int, c_int) -> c_int = core::mem::transmute(p);
+        return func(domain, ty, protocol);
+    }
     if !should_log(4) { return unsafe { libc::socket(domain, ty, protocol) } }
     let ret = unsafe { libc::socket(domain, ty, protocol) };
     log_event(
@@ -246,10 +317,15 @@ pub unsafe extern "C" fn my_socket(domain: c_int, ty: c_int, protocol: c_int) ->
         format_args!("socket({}, {}, {}) -> {}", domain, ty, protocol, ret)
     );
     ret
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_connect(socket: c_int, address: *const libc::sockaddr, len: libc::socklen_t) -> c_int {
+pub unsafe extern "C" fn my_connect(socket: c_int, address: *const libc::sockaddr, len: libc::socklen_t) -> c_int { unsafe {
+    let p = USER_ON_CONNECT.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *const libc::sockaddr, libc::socklen_t) -> c_int = core::mem::transmute(p);
+        return func(socket, address, len);
+    }
     if !should_log(5) { return unsafe { libc::connect(socket, address, len) } }
     log_event(
         "connect",
@@ -257,10 +333,15 @@ pub unsafe extern "C" fn my_connect(socket: c_int, address: *const libc::sockadd
         format_args!("connect({}, address, {})", socket, len)
     );
     unsafe { libc::connect(socket, address, len) }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_send(socket: c_int, buf: *const c_void, len: usize, flags: c_int) -> isize {
+pub unsafe extern "C" fn my_send(socket: c_int, buf: *const c_void, len: usize, flags: c_int) -> isize { unsafe {
+    let p = USER_ON_SEND.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *const c_void, usize, c_int) -> isize = core::mem::transmute(p);
+        return func(socket, buf, len, flags);
+    }
     if !should_log(6) { return unsafe { libc::send(socket, buf, len, flags) } }
     log_event(
         "send",
@@ -268,10 +349,15 @@ pub unsafe extern "C" fn my_send(socket: c_int, buf: *const c_void, len: usize, 
         format_args!("send({}, buf, {}, {})", socket, len, flags)
     );
     unsafe { libc::send(socket, buf, len, flags) }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_recv(socket: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize {
+pub unsafe extern "C" fn my_recv(socket: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize { unsafe {
+    let p = USER_ON_RECV.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int, *mut c_void, usize, c_int) -> isize = core::mem::transmute(p);
+        return func(socket, buf, len, flags);
+    }
     if !should_log(7) { return unsafe { libc::recv(socket, buf, len, flags) } }
     let ret = unsafe { libc::recv(socket, buf, len, flags) };
     log_event(
@@ -280,10 +366,15 @@ pub unsafe extern "C" fn my_recv(socket: c_int, buf: *mut c_void, len: usize, fl
         format_args!("recv({}, buf, {}, {}) -> {}", socket, len, flags, ret)
     );
     ret
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_stat(path: *const c_char, buf: *mut libc::stat) -> c_int {
+pub unsafe extern "C" fn my_stat(path: *const c_char, buf: *mut libc::stat) -> c_int { unsafe {
+    let p = USER_ON_STAT.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*const c_char, *mut libc::stat) -> c_int = core::mem::transmute(p);
+        return func(path, buf);
+    }
     if !should_log(8) { return unsafe { libc::stat(path, buf) } }
     let len = unsafe { libc::strnlen(path, 1024) };
     let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
@@ -295,10 +386,15 @@ pub unsafe extern "C" fn my_stat(path: *const c_char, buf: *mut libc::stat) -> c
         format_args!("stat(\"{}\", buf)", escaped)
     );
     unsafe { libc::stat(path, buf) }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_execve(path: *const c_char, argv: *const *mut c_char, envp: *const *mut c_char) -> c_int {
+pub unsafe extern "C" fn my_execve(path: *const c_char, argv: *const *mut c_char, envp: *const *mut c_char) -> c_int { unsafe {
+    let p = USER_ON_EXECVE.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*const c_char, *const *mut c_char, *const *mut c_char) -> c_int = core::mem::transmute(p);
+        return func(path, argv, envp);
+    }
     if !should_log(9) { return unsafe { libc::execve(path, argv, envp) } }
     let len = unsafe { libc::strnlen(path, 1024) };
     let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
@@ -310,10 +406,15 @@ pub unsafe extern "C" fn my_execve(path: *const c_char, argv: *const *mut c_char
         format_args!("execve(\"{}\", argv, envp)", escaped)
     );
     unsafe { libc::execve(path, argv, envp) }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_fork() -> libc::pid_t {
+pub unsafe extern "C" fn my_fork() -> libc::pid_t { unsafe {
+    let p = USER_ON_FORK.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn() -> libc::pid_t = core::mem::transmute(p);
+        return func();
+    }
     if !should_log(10) { return unsafe { libc::fork() } }
     log_event(
         "fork",
@@ -321,10 +422,15 @@ pub unsafe extern "C" fn my_fork() -> libc::pid_t {
         format_args!("fork()")
     );
     unsafe { libc::fork() }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_exit(status: c_int) -> ! {
+pub unsafe extern "C" fn my_exit(status: c_int) -> ! { unsafe {
+    let p = USER_ON_EXIT.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(c_int) -> ! = core::mem::transmute(p);
+        return func(status);
+    }
     if should_log(11) {
         log_event(
             "exit",
@@ -333,10 +439,15 @@ pub unsafe extern "C" fn my_exit(status: c_int) -> ! {
         );
     }
     unsafe { libc::exit(status) }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_mmap(addr: *mut c_void, len: usize, prot: c_int, flags: c_int, fd: c_int, offset: libc::off_t) -> *mut c_void {
+pub unsafe extern "C" fn my_mmap(addr: *mut c_void, len: usize, prot: c_int, flags: c_int, fd: c_int, offset: libc::off_t) -> *mut c_void { unsafe {
+    let p = USER_ON_MMAP.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*mut c_void, usize, c_int, c_int, c_int, libc::off_t) -> *mut c_void = core::mem::transmute(p);
+        return func(addr, len, prot, flags, fd, offset);
+    }
     if !should_log(12) { return unsafe { libc::mmap(addr, len, prot, flags, fd, offset) } }
     log_event(
         "mmap",
@@ -344,10 +455,15 @@ pub unsafe extern "C" fn my_mmap(addr: *mut c_void, len: usize, prot: c_int, fla
         format_args!("mmap(addr, {}, {}, {}, {}, {})", len, prot, flags, fd, offset)
     );
     unsafe { libc::mmap(addr, len, prot, flags, fd, offset) }
-}
+}}
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn my_munmap(addr: *mut c_void, len: usize) -> c_int {
+pub unsafe extern "C" fn my_munmap(addr: *mut c_void, len: usize) -> c_int { unsafe {
+    let p = USER_ON_MUNMAP.load(Ordering::Relaxed);
+    if !p.is_null() {
+        let func: unsafe extern "C" fn(*mut c_void, usize) -> c_int = core::mem::transmute(p);
+        return func(addr, len);
+    }
     if !should_log(13) { return unsafe { libc::munmap(addr, len) } }
     log_event(
         "munmap",
@@ -355,4 +471,4 @@ pub unsafe extern "C" fn my_munmap(addr: *mut c_void, len: usize) -> c_int {
         format_args!("munmap(addr, {})", len)
     );
     unsafe { libc::munmap(addr, len) }
-}
+}}

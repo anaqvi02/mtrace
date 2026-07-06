@@ -1,6 +1,7 @@
 use std::process::Command;
 use std::env;
 use std::io;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn print_help() {
     println!("mtrace - High-speed macOS user-space system call tracer");
@@ -12,6 +13,7 @@ fn print_help() {
     println!("  -t, --trace <calls>    Comma-separated list of syscalls to intercept (e.g. open,read)");
     println!("  -j, --json             Export logs in NDJSON format");
     println!("  -e, --ecs              Export logs in Elastic Common Schema (ECS) JSON format");
+    println!("  -s, --swap <file.rs>   JIT compile and inject a custom Rust interceptor logic file");
     println!("  -h, --help             Print this help message and exit");
     println!("");
     println!("Example:");
@@ -31,6 +33,7 @@ fn main() -> io::Result<()> {
     let mut args: Vec<String> = env::args().skip(1).collect();
     let mut output_file = None;
     let mut trace_filter = None;
+    let mut swap_file = None;
     let mut json_output = false;
     let mut ecs_output = false;
 
@@ -60,6 +63,13 @@ fn main() -> io::Result<()> {
         } else if args[0] == "-e" || args[0] == "--ecs" {
             args.remove(0);
             ecs_output = true;
+        } else if args[0] == "-s" || args[0] == "--swap" {
+            args.remove(0);
+            if args.is_empty() {
+                eprintln!("Error: -s requires a swap file path (.rs)");
+                std::process::exit(1);
+            }
+            swap_file = Some(args.remove(0));
         } else if args[0] == "-h" || args[0] == "-help" || args[0] == "--help" {
             print_help();
             std::process::exit(0);
@@ -78,9 +88,31 @@ fn main() -> io::Result<()> {
     }
 
     let cmd_name = args.remove(0);
+    
+    let mut compiled_swap_path = None;
+    if let Some(swap_script) = swap_file {
+        let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros();
+        let out_path = format!("/tmp/mtrace_swap_{}.dylib", ts);
+        
+        println!("[mactrace] Compiling swap script: {} -> {}", swap_script, out_path);
+        let status = Command::new("rustc")
+            .args(["--crate-type", "cdylib", &swap_script, "-o", &out_path])
+            .status()?;
+            
+        if !status.success() {
+            eprintln!("[mactrace] Error: Failed to compile swap file. Check your Rust code!");
+            std::process::exit(1);
+        }
+        compiled_swap_path = Some(out_path);
+    }
+
     let mut cmd = Command::new(&cmd_name);
     cmd.args(&args);
     cmd.env("DYLD_INSERT_LIBRARIES", &dylib_path);
+    
+    if let Some(ref path) = compiled_swap_path {
+        cmd.env("MTRACE_SWAP_DYLIB", path);
+    }
 
     if let Some(out) = output_file {
         cmd.env("MTRACE_OUTPUT", out);
@@ -101,6 +133,10 @@ fn main() -> io::Result<()> {
         println!("[mactrace] Command '{}' finished successfully!", cmd_name);
     } else {
         println!("[mactrace] Command '{}' exited with status: {}", cmd_name, status);
+    }
+    
+    if let Some(path) = compiled_swap_path {
+        let _ = std::fs::remove_file(path);
     }
 
     Ok(())

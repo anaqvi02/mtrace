@@ -1,6 +1,6 @@
 # mtrace
 
-`mtrace` is a high-speed, zero-privilege, user-space system call tracer for macOS. 
+`mtrace` (aka `mt`,`mactrace`) is a high-speed, zero-privilege, user-space system call tracer for macOS. 
 
 Unlike Apple's native `dtruss` which requires disabling System Integrity Protection (SIP) and running as root, `mtrace` intercepts system calls entirely in user-space via `DYLD_INSERT_LIBRARIES` dynamic interposition.
 
@@ -81,4 +81,4 @@ You may notice that native `socket` creation took `1.156s`, but running it throu
 
 On macOS, `libnetwork.dylib` and other userspace XPC daemons (like the macOS Application Firewall or Little Snitch) hook into raw network calls for telemetry and security validation. By using `DYLD_INSERT_LIBRARIES` to aggressively interpose on the lowest-level `libc::socket` stub, `mtrace` forces execution to skip these higher-level Apple telemetry frameworks. The result is a tracer so efficient that it actively accelerates macOS networking by shedding the OS's native userspace telemetry bloat.
 
-I think, at least. I haven't done any testing on that front, but this is my hypothesis. Another theory is that something inside is failing gracefully and just continuing with the 
+I think, at least. I haven't done any testing on that front, but this is my hypothesis. Another theory is that something inside is failing gracefully and just continuing with the call, skipping all the XPC telemetry.
