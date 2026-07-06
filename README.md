@@ -83,13 +83,13 @@ Any third-party software, developer tool, or custom script that is standard `arm
 
 | Syscall Category | Native Execution | Traced (Filtered Out) | Traced (Fully Logged) |
 | :--- | :--- | :--- | :--- |
-| `stat` | 0.394s<br>*(788 ns / 0.00078 ms)* | **0.386s**<br>*(772 ns / 0.00077 ms)* | 0.671s<br>*(1342 ns / 0.00134 ms)* |
-| `open` / `close` | 1.949s<br>*(3898 ns / 0.00389 ms)* | **2.028s**<br>*(4056 ns / 0.00405 ms)* | 2.631s<br>*(5262 ns / 0.00526 ms)* |
-| `read` | 0.134s<br>*(268 ns / 0.00026 ms)* | **0.137s**<br>*(274 ns / 0.00027 ms)* | 0.401s<br>*(802 ns / 0.00080 ms)* |
-| `write` | 0.187s<br>*(374 ns / 0.00037 ms)* | **0.190s**<br>*(380 ns / 0.00038 ms)* | 0.452s<br>*(904 ns / 0.00090 ms)* |
-| `socket` / `close` | 1.156s<br>*(2312 ns / 0.00231 ms)* | **0.461s**<br>*(922 ns / 0.00092 ms)* | 1.009s<br>*(2018 ns / 0.00201 ms)* |
-| `conn` / `send` / `recv` | 0.192s<br>*(384 ns / 0.00038 ms)* | **0.202s**<br>*(404 ns / 0.00040 ms)* | 1.007s<br>*(2014 ns / 0.00201 ms)* |
-| `mmap` / `munmap` | 0.176s<br>*(352 ns / 0.00035 ms)* | **0.181s**<br>*(362 ns / 0.00036 ms)* | 0.725s<br>*(1450 ns / 0.00145 ms)* |
+| `stat` | 788 ns / 0.00078 ms | **772 ns / 0.00077 ms** | 1342 ns / 0.00134 ms |
+| `open` / `close` | 3898 ns / 0.00389 ms | **4056 ns / 0.00405 ms** | 5262 ns / 0.00526 ms |
+| `read` | 268 ns / 0.00026 ms | **274 ns / 0.00027 ms** | 802 ns / 0.00080 ms |
+| `write` | 374 ns / 0.00037 ms | **380 ns / 0.00038 ms** | 904 ns / 0.00090 ms |
+| `socket` / `close` | 2312 ns / 0.00231 ms | **922 ns / 0.00092 ms** | 2018 ns / 0.00201 ms |
+| `conn` / `send` / `recv` | 384 ns / 0.00038 ms | **404 ns / 0.00040 ms** | 2014 ns / 0.00201 ms |
+| `mmap` / `munmap` | 352 ns / 0.00035 ms | **362 ns / 0.00036 ms** | 1450 ns / 0.00145 ms |
 
 ### *Side note on Socket
 You may notice that native `socket` creation took `1.156s`, but running it through `mtrace` actually dropped the execution time down to `0.461s`. This is not an error!
