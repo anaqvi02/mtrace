@@ -21,11 +21,6 @@ fn print_help() {
     println!("  mtrace -t open,socket -j -o trace.json curl http://example.com");
 }
 
-fn swapquickstart() -> io::Result<()> {
-
-    Ok(())
-}
-
 fn main() -> io::Result<()> {
     let mut dylib_path = env::current_exe()?;
     dylib_path.set_file_name("libmactrace_lib.dylib");
