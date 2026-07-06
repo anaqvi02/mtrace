@@ -1,5 +1,7 @@
 # mtrace
 
+<img width="800" height="106" alt="image" src="https://github.com/user-attachments/assets/d8dcd629-dd3e-4dfb-893a-6089a98548d1" />
+
 `mtrace` (aka `mt`,`mactrace`) is a high-speed, zero-privilege, user-space system call tracer for macOS. 
 
 Unlike Apple's native `dtruss` which requires disabling System Integrity Protection (SIP) and running as root, `mtrace` intercepts system calls entirely in user-space via `DYLD_INSERT_LIBRARIES` dynamic interposition.
