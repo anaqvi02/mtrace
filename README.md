@@ -18,6 +18,45 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 - **Fast Filtering:** Use `-t` to seamlessly bypass the logging of noisy syscalls.
 - **Active Manipulation:** Because it intercepts calls in user-space, you can freely edit the Rust hooks to block telemetry, bypass license checks, or spoof network traffic. Ex: Very easy to implement TOCTOU exploits.
 
+## A small non-comprehensive list of notable cases that mt works on (verified by me)
+- Steam 
+- Blender 
+- VS Code 
+- Postgres databases 
+- Unity 
+- Firefox 
+- Chrome / Chromium-based browsers 
+- Microsoft Word 
+- Zoom 
+- JetBrains IDEs (IntelliJ, PyCharm, WebStorm, etc.)
+- GarageBand (suprising, but this one makes sense, because it needs to be able to load extentions)
+- GitHub Desktop 
+- Minecraft (using standard x86_64/arm64 Java, not default arm64e) 
+- Slack 
+- Discord 
+- Obsidian 
+- Notion 
+- Postman 
+- Figma 
+- Signal 
+- Spotify 
+- VLC Media Player 
+- OBS Studio 
+- Adobe Photoshop / Adobe CC apps 
+- Ableton Live 
+- Docker Desktop 
+- iTerm2 
+- Sublime Text 
+- TablePlus 
+- Epic Games Launcher 
+- Dropbox 
+- Telegram
+- Desktop Homebrew CLI tools (wget, ffmpeg, etc.)
+- Locally compiled development binaries 
+- Scripting interpreters (Python, Node.js, etc.)
+- Programs written in anylanguage (except raw assembly/direct kernel syscalls)
+
+
 ## Why should you use this?
 - works w/o disabling sip and no sudo required (unlike dtrace/dtruss)
 - its fast and purpose-built (see below) (unlike Frida) (this cant do 99% of what Frida does, but this is a lot faster for this one purpose)

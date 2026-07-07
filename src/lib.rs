@@ -36,7 +36,6 @@ static USER_ON_RECVFROM: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 static USER_ON_MKDIR: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 static USER_ON_RMDIR: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 
-
 #[used]
 #[unsafe(link_section = "__DATA,__mod_init_func")]
 static INITIALIZE: unsafe extern "C" fn() = {
