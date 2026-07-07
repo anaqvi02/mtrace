@@ -74,7 +74,7 @@ fn check_sip_and_codesign(binary_path: &str) {
     }
 }
 
-fn strip_and_copy(binary_path: &str) -> String {
+fn strip_and_copy(binary_path: &str) -> (String, String) {
     let path = Path::new(binary_path);
     if !path.exists() {
         eprintln!("[mt] Error: Binary not found at {}", binary_path);
@@ -117,7 +117,7 @@ fn strip_and_copy(binary_path: &str) -> String {
             .status();
 
         let rel_path = path.strip_prefix(app).unwrap();
-        return dest_app.join(rel_path).to_string_lossy().into_owned();
+        return (dest_app.join(rel_path).to_string_lossy().into_owned(), dest_app.to_string_lossy().into_owned());
 
     } else {
         let binary_name = path.file_name().unwrap().to_string_lossy();
@@ -133,7 +133,7 @@ fn strip_and_copy(binary_path: &str) -> String {
 
         let _ = Command::new("chmod").args(["+x", dest_bin.to_str().unwrap()]).status();
 
-        return dest_bin.to_string_lossy().into_owned();
+        return (dest_bin.to_string_lossy().into_owned(), dest_bin.to_string_lossy().into_owned());
     }
 }
 
@@ -226,9 +226,12 @@ fn main() -> io::Result<()> {
     }
 
     let mut cmd_name = args.remove(0);
+    let mut zombie_root = None;
 
     if strip_signature {
-        cmd_name = strip_and_copy(&cmd_name);
+        let (exec_path, root_path) = strip_and_copy(&cmd_name);
+        cmd_name = exec_path;
+        zombie_root = Some(root_path);
     } else {
         check_sip_and_codesign(&cmd_name);
     }
@@ -288,6 +291,11 @@ fn main() -> io::Result<()> {
         println!("[mt] Command '{}' exited with status: {}", cmd_name, status);
     }
     
+    if let Some(root) = zombie_root {
+        println!("[mt] Cleaning up zombie copy at {}...", root);
+        let _ = Command::new("rm").args(["-rf", &root]).status();
+    }
+
     if let Some(path) = compiled_swap_path {
         let _ = std::fs::remove_file(path);
     }

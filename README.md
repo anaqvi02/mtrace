@@ -23,9 +23,10 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 > [!IMPORTANT]  
 > **System Integrity Protection (SIP) Note:** If your Mac has SIP **enabled**, macOS will automatically block `mtrace` from injecting into any code-signed application that uses the Hardened Runtime (which includes almost all of the apps below). 
 > 
-> To trace these apps with SIP enabled, you must first strip their Hardened Runtime protections by **ad-hoc resigning** them:
-> `codesign --force --deep -s - /Applications/TargetApp.app`
-> *(Note: Apps that rely on the macOS Keychain for credentials or require secure folder access (like Desktop/Documents) will still work perfectly fine after being stripped. However, because macOS sees the unsigned copy as a "new" app, it may repeatedly prompt you to manually enter your password for keychain items or ask for folder permissions again).*
+> To trace these apps with SIP enabled, you must first strip their Hardened Runtime protections by **ad-hoc resigning** them. `mtrace` can automate this for you:
+> `mtrace --strip /Applications/TargetApp.app/Contents/MacOS/TargetApp`
+> 
+> *(Note: The `--strip` flag does **not** touch your original application. It securely clones the app into a temporary "zombie copy" in `/tmp/`, strips the signature from the clone, traces it, and automatically deletes the zombie copy when finished. Apps that rely on the macOS Keychain for credentials or require secure folder access (like Desktop/Documents) will still work perfectly fine in the zombie copy. However, because macOS sees the unsigned copy as a "new" app, it may repeatedly prompt you to manually enter your password for keychain items or ask for folder permissions again).*
 - Steam 
 - Blender 
 - VS Code 
