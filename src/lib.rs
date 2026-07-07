@@ -9,6 +9,10 @@ static LOG_FD: AtomicI32 = AtomicI32::new(2);
 static FILTER_MASK: AtomicU32 = AtomicU32::new(0xFFFFFFFF);
 static JSON_OUTPUT: AtomicBool = AtomicBool::new(false);
 static ECS_OUTPUT: AtomicBool = AtomicBool::new(false);
+static NDUMP_ENABLED: AtomicBool = AtomicBool::new(false);
+static NDUMP_HINT_PRINTED: AtomicBool = AtomicBool::new(false);
+static INITIALIZED: AtomicBool = AtomicBool::new(false);
+static NDUMP_FD: AtomicI32 = AtomicI32::new(-1);
 
 static USER_ON_OPEN: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 static USER_ON_CLOSE: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
@@ -139,6 +143,17 @@ static INITIALIZE: unsafe extern "C" fn() = {
             ECS_OUTPUT.store(true, Ordering::Relaxed);
         }
 
+        let env_ndump = b"MTRACE_NDUMP\0".as_ptr() as *const c_char;
+        let ndump_ptr = unsafe { libc::getenv(env_ndump) };
+        if !ndump_ptr.is_null() {
+            NDUMP_ENABLED.store(true, Ordering::Relaxed);
+            let ndump_path = b"mtrace_ndump.log\0".as_ptr() as *const c_char;
+            let fd = unsafe { libc::open(ndump_path, libc::O_CREAT | libc::O_WRONLY | libc::O_APPEND, 0o644) };
+            if fd >= 0 {
+                NDUMP_FD.store(fd, Ordering::Relaxed);
+            }
+        }
+
         if ECS_OUTPUT.load(Ordering::Relaxed) {
             let msg = b"{\"@timestamp\":\"2000-01-01T00:00:00Z\",\"event\":{\"action\":\"init\"},\"message\":\"mactrace active\"}\n\0";
             unsafe { libc::write(LOG_FD.load(Ordering::Relaxed), msg.as_ptr() as *const c_void, msg.len() - 1); }
@@ -149,6 +164,8 @@ static INITIALIZE: unsafe extern "C" fn() = {
             let msg = b"[mt] Active! Monitoring system calls...\n\0";
             unsafe { libc::write(LOG_FD.load(Ordering::Relaxed), msg.as_ptr() as *const c_void, msg.len() - 1); }
         }
+
+        INITIALIZED.store(true, Ordering::Relaxed);
     }
     init
 };
@@ -216,6 +233,37 @@ fn parse_sockaddr(addr: *const libc::sockaddr) -> String {
             return "AF_UNIX".to_string();
         }
         format!("AF_UNKNOWN({})", family)
+    }
+}
+
+fn maybe_print_ndump_hint() {
+    if !INITIALIZED.load(Ordering::Relaxed) { return; }
+    if !NDUMP_ENABLED.load(Ordering::Relaxed) {
+        if !NDUMP_HINT_PRINTED.swap(true, Ordering::Relaxed) {
+            let hint = b"[mt] Hint: Enable --ndump to dump network/I/O data into the log!\n\0";
+            let fd = LOG_FD.load(Ordering::Relaxed);
+            if fd >= 0 {
+                unsafe { libc::write(fd, hint.as_ptr() as *const c_void, hint.len() - 1) };
+            }
+        }
+    }
+}
+
+fn dump_buffer(action: &str, fd_or_socket: c_int, buf: *const c_void, len: usize) {
+    if !INITIALIZED.load(Ordering::Relaxed) { return; }
+    if NDUMP_ENABLED.load(Ordering::Relaxed) {
+        let dump_fd = NDUMP_FD.load(Ordering::Relaxed);
+        if dump_fd < 0 || buf.is_null() || len == 0 { return; }
+        
+        let header = format!("\n--- {} (fd/socket: {}, bytes: {}) ---\n", action, fd_or_socket, len);
+        unsafe { libc::write(dump_fd, header.as_ptr() as *const c_void, header.len()) };
+        
+        let cap = core::cmp::min(len, 1024 * 1024); // Cap at 1MB per dump
+        unsafe { libc::write(dump_fd, buf, cap) };
+        
+        unsafe { libc::write(dump_fd, b"\n".as_ptr() as *const c_void, 1) };
+    } else {
+        maybe_print_ndump_hint();
     }
 }
 
@@ -342,6 +390,7 @@ pub unsafe extern "C" fn my_read(fd: c_int, buf: *mut c_void, count: usize) -> i
     }
     if !should_log(2) { return unsafe { libc::read(fd, buf, count) } }
     let ret = unsafe { libc::read(fd, buf, count) };
+    if ret > 0 { dump_buffer("read", fd, buf, ret as usize); }
     log_event(
         "read",
         format_args!("\"fd\":{},\"count\":{},\"ret\":{}", fd, count, ret),
@@ -358,6 +407,7 @@ pub unsafe extern "C" fn my_write(fd: c_int, buf: *const c_void, count: usize) -
         return func(fd, buf, count);
     }
     if !should_log(3) { return unsafe { libc::write(fd, buf, count) } }
+    dump_buffer("write", fd, buf, count);
     log_event(
         "write",
         format_args!("\"fd\":{},\"count\":{}", fd, count),
@@ -408,6 +458,7 @@ pub unsafe extern "C" fn my_send(socket: c_int, buf: *const c_void, len: usize, 
         return func(socket, buf, len, flags);
     }
     if !should_log(6) { return unsafe { libc::send(socket, buf, len, flags) } }
+    dump_buffer("send", socket, buf, len);
     log_event(
         "send",
         format_args!("\"socket\":{},\"len\":{},\"flags\":{}", socket, len, flags),
@@ -425,6 +476,7 @@ pub unsafe extern "C" fn my_recv(socket: c_int, buf: *mut c_void, len: usize, fl
     }
     if !should_log(7) { return unsafe { libc::recv(socket, buf, len, flags) } }
     let ret = unsafe { libc::recv(socket, buf, len, flags) };
+    if ret > 0 { dump_buffer("recv", socket, buf, ret as usize); }
     log_event(
         "recv",
         format_args!("\"socket\":{},\"len\":{},\"flags\":{},\"ret\":{}", socket, len, flags, ret),
@@ -675,6 +727,7 @@ pub unsafe extern "C" fn my_sendto(socket: c_int, buf: *const c_void, len: usize
     }
     if !should_log(21) { return unsafe { libc::sendto(socket, buf, len, flags, dest_addr, dest_len) } }
     let addr_str = parse_sockaddr(dest_addr);
+    dump_buffer("sendto", socket, buf, len);
     log_event(
         "sendto",
         format_args!("\"socket\":{},\"len\":{},\"flags\":{},\"dest_addr\":\"{}\",\"dest_len\":{}", socket, len, flags, JsonEscape(&addr_str), dest_len),
@@ -693,6 +746,7 @@ pub unsafe extern "C" fn my_recvfrom(socket: c_int, buf: *mut c_void, len: usize
     if !should_log(22) { return unsafe { libc::recvfrom(socket, buf, len, flags, address, address_len) } }
     let ret = unsafe { libc::recvfrom(socket, buf, len, flags, address, address_len) };
     let addr_str = parse_sockaddr(address);
+    if ret > 0 { dump_buffer("recvfrom", socket, buf, ret as usize); }
     log_event(
         "recvfrom",
         format_args!("\"socket\":{},\"len\":{},\"flags\":{},\"address\":\"{}\",\"ret\":{}", socket, len, flags, JsonEscape(&addr_str), ret),

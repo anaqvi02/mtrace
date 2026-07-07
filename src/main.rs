@@ -154,6 +154,7 @@ fn main() -> io::Result<()> {
     let mut json_output = false;
     let mut ecs_output = false;
     let mut strip_signature = false;
+    let mut ndump = false;
 
     if args.is_empty() {
         print_help();
@@ -191,6 +192,9 @@ fn main() -> io::Result<()> {
         } else if args[0] == "--strip" {
             args.remove(0);
             strip_signature = true;
+        } else if args[0] == "--ndump" || args[0] == "-ndump" {
+            args.remove(0);
+            ndump = true;
         } else if args[0] == "--swapquickstart" {
             println!("[mt] Downloading swap_quickstart.rs from GitHub...");
             let status = Command::new("curl")
@@ -272,6 +276,9 @@ fn main() -> io::Result<()> {
     }
     if ecs_output {
         cmd.env("MTRACE_ECS", "1");
+    }
+    if ndump {
+        cmd.env("MTRACE_NDUMP", "1");
     }
 
     let mut child = cmd.spawn()?;

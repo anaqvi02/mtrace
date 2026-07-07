@@ -109,6 +109,9 @@ mtrace -t open,socket,execve ./my_binary
 # Write logs to a file instead of stderr
 mtrace -o trace.log ./my_binary
 
+# Dump network and I/O buffer payloads (HTTP traffic, raw datagrams, etc.) to a secondary 'mtrace_ndump.log' file
+mtrace --ndump -t send,recv,sendto,recvfrom,read,write ./my_binary
+
 # Output logs in NDJSON or Elastic Common Schema (ECS) format for SIEM ingestion
 mtrace -j -o trace.json ./my_binary
 mtrace -e -o ecs_trace.json ./my_binary
@@ -155,6 +158,7 @@ Any third-party software, developer tool, or custom script that is standard `arm
 - **Process & Mem:** `execve`, `fork`, `exit`, `mmap`, `munmap`
 - **Networking:** `socket`, `connect`, `send`, `recv`, `bind`, `listen`, `accept`, `sendto`, `recvfrom`
 
+> **Note:** Data payloads for `read`, `write`, `send`, `recv`, `sendto`, and `recvfrom` can be captured and written to a secondary file by passing the `--ndump` flag.
 
 ## Benchmarks & Performance
 `mtrace` is designed to be a completely zero-overhead tracer. No expensive string parsing or heap allocations on the hot path are used. Here is the 5-trial average of a 500,000 iteration heavy benchmark:
@@ -171,6 +175,8 @@ Any third-party software, developer tool, or custom script that is standard `arm
 | `mmap` / `munmap` | 352 ns / 0.00035 ms | **362 ns / 0.00036 ms** | 1450 ns / 0.00145 ms |
 
 *(Note: In contrast, tiny improvements in other filtered calls, such as `stat` executing 16 ns faster, are purely statistical noise within the margin of error of CPU benchmarking).*
+
+**Buffer Dumping (`--ndump`) Performance:** `mtrace` writes payload buffers (capped at 1MB per call) with completely zero-allocation logic. The raw pointers are passed directly to the kernel for secondary file I/O, meaning dumping network and file traffic introduces negligible CPU overhead and is only restricted by the write-speed of your disk.
 
 ### *Side note on Socket
 You may notice that native `socket` creation took `2312 ns` natively, but running it through `mtrace` actually dropped the execution time down to `922 ns`. This is not an error!
