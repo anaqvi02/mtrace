@@ -199,6 +199,26 @@ pub static INTERPOSE_ARRAY: [Interpose; 25] = [
     interpose!(my_rmdir, libc::rmdir),
 ];
 
+fn parse_sockaddr(addr: *const libc::sockaddr) -> String {
+    if addr.is_null() { return "null".to_string(); }
+    unsafe {
+        let family = (*addr).sa_family as i32;
+        if family == libc::AF_INET {
+            let addr_in = &*(addr as *const libc::sockaddr_in);
+            let ip = u32::from_be(addr_in.sin_addr.s_addr);
+            let port = u16::from_be(addr_in.sin_port);
+            return format!("{}.{}.{}.{}:{}", (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF, port);
+        } else if family == libc::AF_INET6 {
+            let addr_in6 = &*(addr as *const libc::sockaddr_in6);
+            let port = u16::from_be(addr_in6.sin6_port);
+            return format!("IPv6:[...]:{}", port);
+        } else if family == libc::AF_UNIX {
+            return "AF_UNIX".to_string();
+        }
+        format!("AF_UNKNOWN({})", family)
+    }
+}
+
 #[inline(always)]
 fn should_log(bit: u32) -> bool {
     (FILTER_MASK.load(Ordering::Relaxed) & (1 << bit)) != 0
@@ -371,10 +391,11 @@ pub unsafe extern "C" fn my_connect(socket: c_int, address: *const libc::sockadd
         return func(socket, address, len);
     }
     if !should_log(5) { return unsafe { libc::connect(socket, address, len) } }
+    let addr_str = parse_sockaddr(address);
     log_event(
         "connect",
-        format_args!("\"socket\":{},\"len\":{}", socket, len),
-        format_args!("connect({}, address, {})", socket, len)
+        format_args!("\"socket\":{},\"address\":\"{}\",\"len\":{}", socket, JsonEscape(&addr_str), len),
+        format_args!("connect({}, {}, {})", socket, addr_str, len)
     );
     unsafe { libc::connect(socket, address, len) }
 }}
@@ -602,10 +623,11 @@ pub unsafe extern "C" fn my_bind(socket: c_int, address: *const libc::sockaddr, 
         return func(socket, address, address_len);
     }
     if !should_log(18) { return unsafe { libc::bind(socket, address, address_len) } }
+    let addr_str = parse_sockaddr(address);
     log_event(
         "bind",
-        format_args!("\"socket\":{},\"address_len\":{}", socket, address_len),
-        format_args!("bind({}, address, {})", socket, address_len)
+        format_args!("\"socket\":{},\"address\":\"{}\",\"address_len\":{}", socket, JsonEscape(&addr_str), address_len),
+        format_args!("bind({}, {}, {})", socket, addr_str, address_len)
     );
     unsafe { libc::bind(socket, address, address_len) }
 }}
@@ -635,10 +657,11 @@ pub unsafe extern "C" fn my_accept(socket: c_int, address: *mut libc::sockaddr, 
     }
     if !should_log(20) { return unsafe { libc::accept(socket, address, address_len) } }
     let ret = unsafe { libc::accept(socket, address, address_len) };
+    let addr_str = parse_sockaddr(address);
     log_event(
         "accept",
-        format_args!("\"socket\":{},\"ret\":{}", socket, ret),
-        format_args!("accept({}, address, address_len) -> {}", socket, ret)
+        format_args!("\"socket\":{},\"address\":\"{}\",\"ret\":{}", socket, JsonEscape(&addr_str), ret),
+        format_args!("accept({}, {}, address_len) -> {}", socket, addr_str, ret)
     );
     ret
 }}
@@ -651,10 +674,11 @@ pub unsafe extern "C" fn my_sendto(socket: c_int, buf: *const c_void, len: usize
         return func(socket, buf, len, flags, dest_addr, dest_len);
     }
     if !should_log(21) { return unsafe { libc::sendto(socket, buf, len, flags, dest_addr, dest_len) } }
+    let addr_str = parse_sockaddr(dest_addr);
     log_event(
         "sendto",
-        format_args!("\"socket\":{},\"len\":{},\"flags\":{},\"dest_len\":{}", socket, len, flags, dest_len),
-        format_args!("sendto({}, buf, {}, {}, dest_addr, {})", socket, len, flags, dest_len)
+        format_args!("\"socket\":{},\"len\":{},\"flags\":{},\"dest_addr\":\"{}\",\"dest_len\":{}", socket, len, flags, JsonEscape(&addr_str), dest_len),
+        format_args!("sendto({}, buf, {}, {}, {}, {})", socket, len, flags, addr_str, dest_len)
     );
     unsafe { libc::sendto(socket, buf, len, flags, dest_addr, dest_len) }
 }}
@@ -668,10 +692,11 @@ pub unsafe extern "C" fn my_recvfrom(socket: c_int, buf: *mut c_void, len: usize
     }
     if !should_log(22) { return unsafe { libc::recvfrom(socket, buf, len, flags, address, address_len) } }
     let ret = unsafe { libc::recvfrom(socket, buf, len, flags, address, address_len) };
+    let addr_str = parse_sockaddr(address);
     log_event(
         "recvfrom",
-        format_args!("\"socket\":{},\"len\":{},\"flags\":{},\"ret\":{}", socket, len, flags, ret),
-        format_args!("recvfrom({}, buf, {}, {}, address, address_len) -> {}", socket, len, flags, ret)
+        format_args!("\"socket\":{},\"len\":{},\"flags\":{},\"address\":\"{}\",\"ret\":{}", socket, len, flags, JsonEscape(&addr_str), ret),
+        format_args!("recvfrom({}, buf, {}, {}, {}, address_len) -> {}", socket, len, flags, addr_str, ret)
     );
     ret
 }}
