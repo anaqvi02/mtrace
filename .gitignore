@@ -6,3 +6,12 @@ examples/victim
 *.dylib
 *.dSYM
 test.txt
+bench
+bench.c
+heavy_bench
+patch_lib.py
+scratch
+scratch.rs
+test_kill.sh
+test_kill_10s.sh
+victim2
