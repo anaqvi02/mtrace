@@ -21,7 +21,7 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 ## A small non-comprehensive list of notable cases that mt works on (verified by me)
 
 > [!IMPORTANT]  
-> **System Integrity Protection (SIP) Note:** If your Mac has SIP **enabled**, macOS will automatically block `mtrace` from injecting into any code-signed application that uses the Hardened Runtime (which includes almost all of the apps below). 
+> **System Integrity Protection (SIP) Note:** If your Mac has SIP **enabled**, macOS will automatically block `mtrace` from injecting into any code-signed application that uses the Hardened Runtime (which includes almost all of the apps below). *(Note: If you already have SIP disabled, you do not need to use `--strip`. You can simply run `mtrace` directly on any hardened application!)*
 > 
 > To trace these apps with SIP enabled, you must first strip their Hardened Runtime protections by **ad-hoc resigning** them. `mtrace` can automate this for you:
 > `mtrace --strip /Applications/TargetApp.app/Contents/MacOS/TargetApp`
