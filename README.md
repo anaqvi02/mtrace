@@ -67,7 +67,7 @@ mtrace -e -o ecs_trace.json ./my_binary
 ```
 
 ## Dynamic Instrumentation (Swapping)
-`mtrace` is not just a passive logger; it is a full **Dynamic Injection Engine**. You can inject custom Rust logic directly into the hot path of the traced application to block system calls, spoof returns, or build powerful custom sandboxes.
+`mtrace` is not just a passive logger; it is a full **Dynamic Injection Engine**. You can inject custom Rust logic directly into the hot path of the traced application to block system calls, spoof returns, or build powerful custom sandboxes. *(Note: This feature requires `rustc` to be installed on your system).*
 
 To get started quickly, download the standard 25-hook template:
 ```bash
