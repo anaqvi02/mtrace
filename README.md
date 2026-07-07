@@ -19,6 +19,12 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 - **Active Manipulation:** Because it intercepts calls in user-space, you can freely edit the Rust hooks to block telemetry, bypass license checks, or spoof network traffic. Ex: Very easy to implement TOCTOU exploits.
 
 ## A small non-comprehensive list of notable cases that mt works on (verified by me)
+
+> [!IMPORTANT]  
+> **System Integrity Protection (SIP) Note:** If your Mac has SIP **enabled**, macOS will automatically block `mtrace` from injecting into any code-signed application that uses the Hardened Runtime (which includes almost all of the apps below). 
+> 
+> To trace these apps with SIP enabled, you must first strip their Hardened Runtime protections by **ad-hoc resigning** them:
+> `codesign --force --deep -s - /Applications/TargetApp.app`
 - Steam 
 - Blender 
 - VS Code 
@@ -31,7 +37,7 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 - JetBrains IDEs (IntelliJ, PyCharm, WebStorm, etc.)
 - GarageBand (suprising, but this one makes sense, because it needs to be able to load extentions)
 - GitHub Desktop 
-- Minecraft (using standard x86_64/arm64 Java, not default arm64e) 
+- Minecraft (using standard x86_64/arm64 Java, not default arm64e) (launcher and game itself)
 - Slack 
 - Discord 
 - Obsidian 
@@ -55,6 +61,7 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 - Locally compiled development binaries 
 - Scripting interpreters (Python, Node.js, etc.)
 - Programs written in anylanguage (except raw assembly/direct kernel syscalls)
+- kind of deviously powerful. i didnt even build it for this purpose.
 
 
 ## Why should you use this?
