@@ -15,3 +15,5 @@ scratch.rs
 test_kill.sh
 test_kill_10s.sh
 victim2
+hello
+hello.go
