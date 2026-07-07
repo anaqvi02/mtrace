@@ -5,7 +5,7 @@
 examples/victim
 *.dylib
 *.dSYM
-test.txt
+*.txt
 bench
 bench.c
 heavy_bench
