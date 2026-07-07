@@ -112,10 +112,18 @@ fn strip_and_copy(binary_path: &str) -> (String, String) {
             std::process::exit(1);
         }
 
-        eprintln!("[mt] Removing signature and ad-hoc resigning...");
-        let _ = Command::new("codesign")
-            .args(["--force", "--deep", "-s", "-", dest_app.to_str().unwrap()])
-            .status();
+        eprintln!("[mt] Recursively removing signatures and ad-hoc resigning...");
+        let script = format!(
+            "find '{0}' -type f -exec codesign --remove-signature {{}} \\; 2>/dev/null; \
+             find '{0}' -type f -exec codesign --force -s - {{}} \\; 2>/dev/null; \
+             codesign --force -s - '{0}'",
+            dest_app.to_str().unwrap()
+        );
+        let status = Command::new("bash").args(["-c", &script]).status();
+        
+        if status.is_err() || !status.unwrap().success() {
+            eprintln!("[mt] Warning: Some signatures may not have been cleanly removed.");
+        }
 
         let rel_path = path.strip_prefix(app).unwrap();
         return (dest_app.join(rel_path).to_string_lossy().into_owned(), dest_app.to_string_lossy().into_owned());
