@@ -30,6 +30,7 @@ fn print_help() {
     println!("  -e, --ecs              Export logs in Elastic Common Schema (ECS) JSON format");
     println!("  -s, --swap <file.rs>   JIT compile and inject a custom Rust interceptor logic file");
     println!("  --strip                Automatically copy and ad-hoc resign the target to bypass macOS SIP restrictions");
+    println!("                         (WARNING: Running a stripped clone may corrupt the original app's shared data or caches. Only use this if you know what you're doing)");
     println!("  --swapquickstart       Download a template swap.rs file to the current directory");
     println!("  -h, --help             Print this help message and exit");
     println!("");
@@ -196,22 +197,15 @@ fn main() -> io::Result<()> {
             args.remove(0);
             ndump = true;
         } else if args[0] == "--swapquickstart" {
-            println!("[mt] Downloading swap_quickstart.rs from GitHub...");
-            let status = Command::new("curl")
-                .args(["-sL", "https://raw.githubusercontent.com/anaqvi02/mtrace/main/examples/swap.rs", "-o", "swap_quickstart.rs"])
-                .status();
-            
-            match status {
-                Ok(s) if s.success() => {
-                    println!("[mt] Successfully downloaded swap_quickstart.rs");
-                    println!("[mt] You can now edit it and run: mt -s swap_quickstart.rs <command>");
-                    std::process::exit(0);
-                }
-                _ => {
-                    eprintln!("[mt] Error: Failed to download the quickstart file. Check your internet connection or URL.");
-                    std::process::exit(1);
-                }
+            println!("[mt] Generating swap_quickstart.rs...");
+            let content = include_str!("../examples/swap.rs");
+            if let Err(e) = fs::write("swap_quickstart.rs", content) {
+                eprintln!("[mt] Error writing file: {}", e);
+                std::process::exit(1);
             }
+            println!("[mt] Successfully created swap_quickstart.rs");
+            println!("[mt] You can now edit it and run: mt -s swap_quickstart.rs <command>");
+            std::process::exit(0);
         } else if args[0] == "-h" || args[0] == "-help" || args[0] == "--help" {
             print_help();
             std::process::exit(0);

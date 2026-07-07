@@ -512,7 +512,7 @@ pub unsafe extern "C" fn my_execve(path: *const c_char, argv: *const *mut c_char
         let func: unsafe extern "C" fn(*const c_char, *const *mut c_char, *const *mut c_char) -> c_int = core::mem::transmute(p);
         return func(path, argv, envp);
     }
-    if !should_log(9) { return unsafe { libc::execve(path, argv, envp) } }
+    if !should_log(9) { return unsafe { libc::execve(path, argv as *const *const c_char, envp as *const *const c_char) } }
     let len = unsafe { libc::strnlen(path, 1024) };
     let path_bytes = unsafe { core::slice::from_raw_parts(path as *const u8, len) };
     let path_str = core::str::from_utf8(path_bytes).unwrap_or("<invalid_utf8>");
@@ -522,7 +522,7 @@ pub unsafe extern "C" fn my_execve(path: *const c_char, argv: *const *mut c_char
         format_args!("\"path\":\"{}\"", escaped),
         format_args!("execve(\"{}\", argv, envp)", escaped)
     );
-    unsafe { libc::execve(path, argv, envp) }
+    unsafe { libc::execve(path, argv as *const *const c_char, envp as *const *const c_char) }
 }}
 
 #[unsafe(no_mangle)]

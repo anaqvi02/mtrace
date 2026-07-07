@@ -26,7 +26,10 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 > To trace these apps with SIP enabled, you must first strip their Hardened Runtime protections by **ad-hoc resigning** them. `mtrace` can automate this for you:
 > `mtrace --strip /Applications/TargetApp.app/Contents/MacOS/TargetApp`
 > 
-> *(Note: The `--strip` flag does **not** touch your original application. It securely clones the app into a temporary "zombie copy" in `/tmp/`, strips the signature from the clone, traces it, and automatically deletes the zombie copy when finished. Apps that rely on the macOS Keychain for credentials or require secure folder access (like Desktop/Documents) will still work perfectly fine in the zombie copy. However, because macOS sees the unsigned copy as a "new" app, it may repeatedly prompt you to manually enter your password for keychain items or ask for folder permissions again).*
+> > [!WARNING]  
+> > **Data Corruption Risk:** While `--strip` creates a temporary "zombie copy" in `/tmp/` and does not modify the original binary, the clone will still read and write to the original application's shared preferences, caches, and `Application Support` directories. Running a stripped clone could corrupt local databases (like Spotify's cache) or have unintended consequences on the real app's state. Only use this if you know what you're doing.
+> 
+> *(Note: Apps that rely on the macOS Keychain for credentials or require secure folder access (like Desktop/Documents) will still work perfectly fine in the zombie copy. However, because macOS sees the unsigned copy as a "new" app, it may repeatedly prompt you to manually enter your password for keychain items or ask for folder permissions again).*
 - Steam 
 - Blender 
 - VS Code 
