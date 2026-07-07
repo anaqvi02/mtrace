@@ -25,8 +25,7 @@ If you are a reverse engineer, malware analyst, or just want to debug a crashing
 > 
 > To trace these apps with SIP enabled, you must first strip their Hardened Runtime protections by **ad-hoc resigning** them:
 > `codesign --force --deep -s - /Applications/TargetApp.app`
-> 
-> *(Note: Apps that rely on the macOS Keychain for credentials will still work perfectly fine after being stripped, but macOS may repeatedly prompt you to manually enter your password to grant the "new" unsigned binary access to its old keychain items).*
+> *(Note: Apps that rely on the macOS Keychain for credentials or require secure folder access (like Desktop/Documents) will still work perfectly fine after being stripped. However, because macOS sees the unsigned copy as a "new" app, it may repeatedly prompt you to manually enter your password for keychain items or ask for folder permissions again).*
 - Steam 
 - Blender 
 - VS Code 
