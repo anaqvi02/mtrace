@@ -3,6 +3,8 @@ use std::env;
 use std::io;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::path::Path;
+use std::fs;
 
 static CHILD_PID: AtomicU32 = AtomicU32::new(0);
 
@@ -27,11 +29,112 @@ fn print_help() {
     println!("  -j, --json             Export logs in NDJSON format");
     println!("  -e, --ecs              Export logs in Elastic Common Schema (ECS) JSON format");
     println!("  -s, --swap <file.rs>   JIT compile and inject a custom Rust interceptor logic file");
+    println!("  --strip                Automatically copy and ad-hoc resign the target to bypass macOS SIP restrictions");
     println!("  --swapquickstart       Download a template swap.rs file to the current directory");
     println!("  -h, --help             Print this help message and exit");
     println!("");
     println!("Example:");
     println!("  mtrace -t open,socket -j -o trace.json curl http://example.com");
+}
+
+fn is_sip_enabled() -> bool {
+    let output = Command::new("csrutil").arg("status").output().unwrap_or_else(|_| {
+        Command::new("true").output().unwrap()
+    });
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.contains("enabled")
+}
+
+fn has_hardened_runtime(binary_path: &str) -> bool {
+    let output = Command::new("codesign")
+        .args(["-dvv", binary_path])
+        .output()
+        .unwrap_or_else(|_| Command::new("true").output().unwrap());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    stderr.contains("flags=0x10000(runtime)")
+}
+
+fn has_dyld_entitlement(binary_path: &str) -> bool {
+    let output = Command::new("codesign")
+        .args(["-d", "--entitlements", ":-", binary_path])
+        .output()
+        .unwrap_or_else(|_| Command::new("true").output().unwrap());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.contains("com.apple.security.cs.allow-dyld-environment-variables")
+}
+
+fn check_sip_and_codesign(binary_path: &str) {
+    if !is_sip_enabled() { return; }
+    if has_hardened_runtime(binary_path) && !has_dyld_entitlement(binary_path) {
+        eprintln!("");
+        eprintln!("⚠️  [mt] WARNING: SIP is enabled and this binary enforces the Hardened Runtime.");
+        eprintln!("⚠️  [mt] macOS will silently block DYLD_INSERT_LIBRARIES.");
+        eprintln!("💡 [mt] TIP: Run with the '--strip' flag to automatically create and trace an unsigned copy!");
+        eprintln!("");
+    }
+}
+
+fn strip_and_copy(binary_path: &str) -> String {
+    let path = Path::new(binary_path);
+    if !path.exists() {
+        eprintln!("[mt] Error: Binary not found at {}", binary_path);
+        std::process::exit(1);
+    }
+
+    let mut app_root = None;
+    let mut current = path;
+    while let Some(parent) = current.parent() {
+        if let Some(ext) = current.extension() {
+            if ext == "app" {
+                app_root = Some(current);
+                break;
+            }
+        }
+        current = parent;
+    }
+
+    let target_dir = Path::new("/tmp/mtrace_targets");
+    if !target_dir.exists() {
+        let _ = fs::create_dir_all(target_dir);
+    }
+
+    if let Some(app) = app_root {
+        let app_name = app.file_name().unwrap().to_string_lossy();
+        let dest_app = target_dir.join(app_name.as_ref());
+        
+        eprintln!("[mt] Copying {} to {}...", app.display(), dest_app.display());
+        let _ = Command::new("rm").args(["-rf", dest_app.to_str().unwrap()]).status();
+        let status = Command::new("cp").args(["-R", app.to_str().unwrap(), dest_app.to_str().unwrap()]).status();
+        
+        if status.is_err() || !status.unwrap().success() {
+            eprintln!("[mt] Error: Failed to copy app bundle");
+            std::process::exit(1);
+        }
+
+        eprintln!("[mt] Removing signature and ad-hoc resigning...");
+        let _ = Command::new("codesign")
+            .args(["--force", "--deep", "-s", "-", dest_app.to_str().unwrap()])
+            .status();
+
+        let rel_path = path.strip_prefix(app).unwrap();
+        return dest_app.join(rel_path).to_string_lossy().into_owned();
+
+    } else {
+        let binary_name = path.file_name().unwrap().to_string_lossy();
+        let dest_bin = target_dir.join(binary_name.as_ref());
+        
+        eprintln!("[mt] Copying {} to {}...", path.display(), dest_bin.display());
+        let _ = fs::copy(path, &dest_bin);
+        
+        eprintln!("[mt] Removing signature and ad-hoc resigning...");
+        let _ = Command::new("codesign")
+            .args(["--force", "-s", "-", dest_bin.to_str().unwrap()])
+            .status();
+
+        let _ = Command::new("chmod").args(["+x", dest_bin.to_str().unwrap()]).status();
+
+        return dest_bin.to_string_lossy().into_owned();
+    }
 }
 
 fn main() -> io::Result<()> {
@@ -50,6 +153,7 @@ fn main() -> io::Result<()> {
     let mut swap_file = None;
     let mut json_output = false;
     let mut ecs_output = false;
+    let mut strip_signature = false;
 
     if args.is_empty() {
         print_help();
@@ -84,6 +188,9 @@ fn main() -> io::Result<()> {
                 std::process::exit(1);
             }
             swap_file = Some(args.remove(0));
+        } else if args[0] == "--strip" {
+            args.remove(0);
+            strip_signature = true;
         } else if args[0] == "--swapquickstart" {
             println!("[mt] Downloading swap_quickstart.rs from GitHub...");
             let status = Command::new("curl")
@@ -108,13 +215,7 @@ fn main() -> io::Result<()> {
             eprintln!("Unknown argument: {}", args[0]);
             eprintln!("Use -h or --help for usage information.");
             std::process::exit(1);
-        }
-
-        else if args[0].starts_with("--swapquickstart"){
-            eprintln!("Creating quickstart swap file!");
-        }
-
-        else {
+        } else {
             break;
         }
     }
@@ -124,7 +225,13 @@ fn main() -> io::Result<()> {
         std::process::exit(1);
     }
 
-    let cmd_name = args.remove(0);
+    let mut cmd_name = args.remove(0);
+
+    if strip_signature {
+        cmd_name = strip_and_copy(&cmd_name);
+    } else {
+        check_sip_and_codesign(&cmd_name);
+    }
     
     let mut compiled_swap_path = None;
     if let Some(swap_script) = swap_file {
